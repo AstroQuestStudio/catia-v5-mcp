@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "catia-v5-mcp"
+version = "0.3.0"
+description = "MCP server that lets AI agents drive CATIA V5 (R19+) through COM: batch execution, self-checking modelling tools, and a learning knowledge base of proven pitfalls"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "AstroQuest Studio" }]
+keywords = ["catia", "catia-v5", "mcp", "model-context-protocol", "cad", "automation", "ai-agents", "com"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Manufacturing",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "mcp>=1.10,<2",
+    "jsonschema>=4.0",
+    "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+# Read vector PDF drawings (exact geometry, overlays). PyMuPDF is AGPL-3.0: it is imported
+# lazily and never required by the server itself.
+drawing = ["pymupdf>=1.24", "pillow>=10"]
+dev = ["pytest>=7.0", "ruff>=0.4.0", "pymupdf>=1.24", "pillow>=10"]
+
+[project.scripts]
+catia-mcp = "catia_mcp.server:main"
+catia-mcp-run = "catia_mcp.runner:main"
+
+[tool.setuptools.packages.find]
+include = ["catia_mcp*"]
+
+[tool.setuptools.package-data]
+catia_mcp = ["data/*.json", "data/*.md", "data/guides/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008", "UP007", "UP035", "B905", "B023", "E702", "E741", "B904", "E731", "B007"]

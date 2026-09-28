@@ -1,0 +1,1998 @@
+[
+ {
+  "id": "L001",
+  "title": "Generic E_FAIL carries no cause: isolate by variants, do not guess",
+  "area": "com",
+  "severity": "high",
+  "symptom": "COM raises (-2147352567, 'Une exception s'est produite.', ... 'La méthode UpdateObject a échoué' ..., -2147467259).",
+  "error_patterns": [
+   "-?2147467259",
+   "Une exception s.est produite",
+   "Exception occurred"
+  ],
+  "cause": "-2147467259 is the generic E_FAIL; the message names the failing method, never the reason.",
+  "rule": "Read the message text, not the numeric code. Find the cause by testing variants in a throw-away probe script (one new document per variant), then bake the working variant into the tool.",
+  "example": "(-2147352567, \"Une exception s'est produite.\", (0, 'CATIAPart', 'La méthode UpdateObject a échoué', None, 0, -2147467259), None)",
+  "tools": [],
+  "proof": "Recurring pattern across every failed feature (shaft, chamfer, hole) during live validation.",
+  "source": "builtin"
+ },
+ {
+  "id": "L002",
+  "title": "Feature update failure: UpdateObject failed",
+  "area": "com",
+  "severity": "high",
+  "symptom": "'La méthode UpdateObject a échoué' right after creating a feature.",
+  "error_patterns": [
+   "UpdateObject",
+   "method UpdateObject failed"
+  ],
+  "cause": "The feature definition is invalid (wrong axis, wrong enum, wrong reference, wrong direction) and CATIA cannot rebuild it.",
+  "rule": "Do not retry the same call. Delete the failed feature (catia_delete_feature) and re-check the feature-specific lesson (shaft/groove axis, chamfer mode, pocket direction, sketch support).",
+  "tools": [
+   "catia_shaft",
+   "catia_groove",
+   "catia_chamfer",
+   "catia_pad",
+   "catia_pocket",
+   "catia_fillet"
+  ],
+  "proof": "Seen on shaft without CenterLine, chamfer with mode 0 and '45', sketch on a face of another body.",
+  "source": "builtin"
+ },
+ {
+  "id": "L003",
+  "title": "A failed feature left in the tree poisons every later Update",
+  "area": "part",
+  "severity": "high",
+  "symptom": "After one feature failed, unrelated later part.Update() calls also fail.",
+  "error_patterns": [
+   "The failed feature was (removed|deleted)",
+   "CATIA refused the"
+  ],
+  "cause": "A feature that failed to rebuild stays in the specification tree and makes each following Part.Update() fail.",
+  "rule": "Delete the failed feature immediately (catia_delete_feature) before doing anything else. The server does this automatically for Shaft, Groove and boolean operations.",
+  "tools": [
+   "catia_delete_feature",
+   "catia_shaft",
+   "catia_groove",
+   "catia_boolean_operation"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L004",
+  "title": "Set a Parameter object with .Value, never by direct assignment",
+  "area": "com",
+  "severity": "critical",
+  "symptom": "Property 'AddNewShaft.FirstAngle' can not be set.",
+  "error_patterns": [
+   "Property '.+' can ?not be set"
+  ],
+  "cause": "Angles, lengths and diameters of features are Parameter objects (Angle, Length), not plain numbers.",
+  "rule": "Write feature values through '.Value': shaft.FirstAngle.Value = 360, pad.SecondLimit.Dimension.Value = 1, hole.Diameter.Value = 12. Exception: thread Diameter/Pitch/Depth are plain doubles.",
+  "tools": [
+   "catia_shaft",
+   "catia_groove",
+   "catia_pad",
+   "catia_hole",
+   "catia_set_parameter"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L005",
+  "title": "Never guess a COM signature or enum value; dump the type library",
+  "area": "process",
+  "severity": "critical",
+  "symptom": "A call fails or silently does the wrong thing (circular pattern with 8 args instead of 12, contact = 3 instead of 20, chamfer modes swapped, thread polarity inverted).",
+  "error_patterns": [],
+  "cause": "CATIA's Automation API is large and counter-intuitive; enum values and argument lists cannot be guessed. Almost every early bug came from a guessed signature or enum.",
+  "rule": "Extract the exact API (signatures, parameter names, enum values) from the CATIA type libraries into text files and grep them (e.g. 'AddNewChamfer', 'enum CatHoleType') before writing any COM call. Never invent a method, argument count or constant.",
+  "tools": [],
+  "proof": "Root cause of nearly all bugs found during the first live validation session.",
+  "source": "builtin"
+ },
+ {
+  "id": "L006",
+  "title": "ByRef output arrays come back as zeros from Python",
+  "area": "com",
+  "severity": "critical",
+  "symptom": "GetCOG, GetPlane, GetPointsOnCurve, Position.GetComponents, GetAxis return zeros (Area returns 0 on selection references).",
+  "error_patterns": [],
+  "cause": "pywin32 late binding does not write back ByRef arrays.",
+  "rule": "Run a VBScript inside CATIA: app.SystemService.Evaluate(code, 0, 'CATMain', [args...]). Arguments may be COM objects and Python lists (become VBS arrays); return a numeric array (it comes back as a tuple of floats).",
+  "example": "app.SystemService.Evaluate(vbs, 0, 'CATMain', [measurable_ref, 0.5])",
+  "tools": [
+   "catia_get_inertia",
+   "catia_get_bounding_box",
+   "catia_measure_distance",
+   "catia_list_components"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L007",
+  "title": "Return numbers from VBScript, never concatenated strings (locale decimal comma)",
+  "area": "com",
+  "severity": "medium",
+  "symptom": "In VBS, CStr(0.5) gives '0,5' on a French UI, breaking float() parsing.",
+  "error_patterns": [],
+  "cause": "VBScript formats numbers with the UI locale.",
+  "rule": "Return an array of numbers from SystemService.Evaluate. If you must parse text from CATIA, replace ',' with '.' before float().",
+  "example": "float(value.replace(',', '.'))",
+  "tools": [
+   "catia_clash_analysis"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L008",
+  "title": "GetWorkbench belongs to the Document, not the Application",
+  "area": "measure",
+  "severity": "medium",
+  "symptom": "app.GetWorkbench('SPAWorkbench') fails.",
+  "error_patterns": [
+   "GetWorkbench"
+  ],
+  "cause": "SPAWorkbench is obtained from the document.",
+  "rule": "Use document.GetWorkbench('SPAWorkbench').",
+  "tools": [
+   "catia_get_inertia",
+   "catia_measure_distance"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L009",
+  "title": "CATIA COM is single-threaded: never parallelise, serialise all calls",
+  "area": "com",
+  "severity": "high",
+  "symptom": "Concurrent calls stall or corrupt CATIA state.",
+  "error_patterns": [],
+  "cause": "CATIA's COM server is a single-threaded apartment (STA).",
+  "rule": "Issue CATIA calls one at a time. The only safe speed-up is CATIA.RefreshDisplay = False during a tool call, restored in a finally block.",
+  "tools": [],
+  "proof": "Design constraint confirmed while optimising tool speed on CATIA V5 R19.",
+  "source": "builtin"
+ },
+ {
+  "id": "L010",
+  "title": "A script killed while RefreshDisplay=False leaves CATIA frozen",
+  "area": "display",
+  "severity": "medium",
+  "symptom": "The 3D view no longer redraws after an aborted script.",
+  "error_patterns": [],
+  "cause": "RefreshDisplay was left False.",
+  "rule": "Always restore RefreshDisplay = True in a finally block; on connect, force it back to True.",
+  "tools": [
+   "catia_connect"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L011",
+  "title": "A modal dialog blocks all automation: find it, do not click blindly",
+  "area": "com",
+  "severity": "high",
+  "symptom": "Calls hang; no error is returned.",
+  "error_patterns": [],
+  "cause": "Any CATIA modal box (open again?, overwrite?, unknown command) blocks the COM call.",
+  "rule": "Prevent them (DisplayFileAlerts = False around Open/Save). To locate a modal without a screenshot, enumerate windows of the CNEXT.exe process (win32gui.EnumWindows) and look for class '#32770'. After a hang, do not replay the mutation blindly: re-check session and model state first.",
+  "tools": [
+   "catia_open_document",
+   "catia_save_document",
+   "catia_add_component"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L012",
+  "title": "Never guess a CATIA command name in StartCommand",
+  "area": "com",
+  "severity": "high",
+  "symptom": "A 'Commande inconnue' dialog appears and blocks the COM call.",
+  "error_patterns": [
+   "Commande inconnue",
+   "Unknown command"
+  ],
+  "cause": "StartCommand with an unknown name opens a modal error box. 'Tout développer' does not work through COM either.",
+  "rule": "Only start commands whose exact name is verified. To expand the tree use the setting CATCafTreeVizManipSettingCtrl.AutoExpandActivation instead.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L013",
+  "title": "Selection.Item(i).Reference fails from Python on large results",
+  "area": "com",
+  "severity": "high",
+  "symptom": "About 70 % of Selection.Item(i).Reference calls fail on a large part (707 of 894 on a 36-tooth sprocket) while the same calls succeed in VBScript.",
+  "error_patterns": [
+   "m.thode Reference a .chou"
+  ],
+  "cause": "COM marshalling of selection items from Python is unreliable and every round trip is costly.",
+  "rule": "Do the whole topological search and reference retrieval inside one VBScript. One bad entry must never abort the loop.",
+  "tools": [
+   "catia_list_faces",
+   "catia_list_edges",
+   "catia_fillet",
+   "catia_chamfer"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L014",
+  "title": "Probe unknown COM APIs in a fresh document each, and close it",
+  "area": "process",
+  "severity": "high",
+  "symptom": "CATIA crashed after many open documents combined with repeated failures (twice with unresolved cross-body sketches).",
+  "error_patterns": [],
+  "cause": "Accumulated documents in an inconsistent state destabilise CATIA.",
+  "rule": "Probe in a scratch script: one new document per variant, closed at the end. Avoid piling failed attempts into one document.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L015",
+  "title": "Feature.Name and Sketch.Name are read/write in raw COM; verify after writing",
+  "area": "com",
+  "severity": "medium",
+  "symptom": "Rename appears to succeed but the name did not change.",
+  "error_patterns": [
+   "\\[naming\\].*(NOT applied|did not take effect|already exists)"
+  ],
+  "cause": "Raw win32com exposes Name as writable, but CATIA may refuse (for instance a duplicate name).",
+  "rule": "After setting .Name, re-read it and compare. Names must be unique in the part.",
+  "tools": [
+   "catia_rename_feature",
+   "catia_rename_body"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L016",
+  "title": "Part.Name is read-only: use Product.PartNumber",
+  "area": "com",
+  "severity": "medium",
+  "symptom": "'La méthode Name a échoué' when renaming a part document; renaming via .Name is refused.",
+  "error_patterns": [
+   "La m.thode Name a .chou",
+   "method Name failed"
+  ],
+  "cause": "The document name is read-only; the part's name is Document.Product.PartNumber (kept at Save As).",
+  "rule": "Set document.Product.PartNumber for the part identity; the file name comes from Save As.",
+  "tools": [
+   "catia_new_part",
+   "catia_save_document"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L017",
+  "title": "Selection.Delete refuses geometry used by another geometry",
+  "area": "com",
+  "severity": "medium",
+  "symptom": "'Interdiction de supprimer une géométrie agrégée par une autre géométrie'.",
+  "error_patterns": [
+   "Interdiction de supprimer",
+   "agr.g.e par une autre"
+  ],
+  "cause": "The geometry is aggregated (referenced) by another element.",
+  "rule": "Delete dependants first, or delete the owning feature instead of the child geometry.",
+  "tools": [
+   "catia_delete_feature"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L018",
+  "title": "Part.InWorkObject moves to the last feature, so the active body must be cached",
+  "area": "part",
+  "severity": "high",
+  "symptom": "After the first feature, later sketches and features fall back to the main body.",
+  "error_patterns": [],
+  "cause": "Right after 'define in work object' InWorkObject is a Body, but the first created feature moves it to point at that feature.",
+  "rule": "Track the active body by name and re-resolve it against Part.Bodies on every call; never derive it from InWorkObject after the first feature. The cached name is lost on server reconnect: call catia_activate_body again.",
+  "tools": [
+   "catia_activate_body",
+   "catia_new_body",
+   "catia_pad",
+   "catia_pocket"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L019",
+  "title": "Body.HybridShapes and Body.Sketches can list foreign or duplicate items",
+  "area": "part",
+  "severity": "low",
+  "symptom": "A solid feature (e.g. a fillet) shows up under Body.HybridShapes; Body.Sketches of the target body also lists sketches of absorbed bodies.",
+  "error_patterns": [],
+  "cause": "CATIA collections overlap after booleans.",
+  "rule": "De-duplicate HybridShapes against Body.Shapes, and keep only the body's own sketches when auditing the tree.",
+  "tools": [
+   "catia_get_tree",
+   "catia_list_features"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L020",
+  "title": "Default names are localized; detect defaults by the '.N' suffix",
+  "area": "process",
+  "severity": "medium",
+  "symptom": "Features are called Extrusion.N, Poche.N, Révolution.N, Gorge.N, Congé arête.N, Droite.N, 'Corps principal' on a French UI; Pad.1, Sketch.1 in English; BRep names stay English (Brp:(Pad.1;2)).",
+  "error_patterns": [],
+  "cause": "Default names depend on the UI language.",
+  "rule": "Audit names in a language-independent way: a name ending in '.N' (or the main body name) is a default. Rename at creation via the tool's 'name' argument.",
+  "tools": [
+   "catia_get_tree",
+   "catia_rename_feature"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L021",
+  "title": "A user name ending in a decimal dimension is not a default name",
+  "area": "process",
+  "severity": "low",
+  "symptom": "A name like 'Esq_Collar_R57.5' was silently renamed by the naming audit.",
+  "error_patterns": [],
+  "cause": "The '.5' looks like an instance counter.",
+  "rule": "CATIA defaults never contain '_' and never have a digit right before the dot; apply that rule before renaming.",
+  "tools": [
+   "catia_get_tree"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L022",
+  "title": "Name every object at creation (features, sketches, bodies, constraints)",
+  "area": "process",
+  "severity": "high",
+  "symptom": "The specification tree is full of Pad.1, Pocket.2, Sketch.3.",
+  "error_patterns": [],
+  "cause": "Default names are unreadable and are often judged as poor tree quality.",
+  "rule": "Pass 'name' to every creation tool; use role-based names (Sketch_role, Pocket_role_dim, Body_zone). Audit with catia_get_tree and fix remaining defaults.",
+  "tools": [
+   "catia_get_tree",
+   "catia_pad",
+   "catia_pocket",
+   "catia_create_sketch",
+   "catia_new_body"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L023",
+  "title": "Solid features must announce a volume change; zero or absurd means failure",
+  "area": "process",
+  "severity": "critical",
+  "symptom": "A feature is created and the update succeeds but nothing changed (or changed the wrong way).",
+  "error_patterns": [],
+  "cause": "A clean update does not prove the intended geometry effect (wrong pocket direction, non-through cut, wrong side).",
+  "rule": "Measure volume before and after every material-changing feature. Zero variation or a wrong sign or magnitude is an error; fix it before adding more features.",
+  "tools": [
+   "catia_pad",
+   "catia_pocket",
+   "catia_get_inertia"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L024",
+  "title": "A plausible volume does not prove the shape: overlay the profile on the drawing",
+  "area": "process",
+  "severity": "critical",
+  "symptom": "A valid, non-self-intersecting profile with a plausible volume was still wrong (an arc drawn round the wrong side left a bulge of material).",
+  "error_patterns": [],
+  "cause": "CATIA accepts any valid closed contour; volume checks cannot detect a shape that is merely different.",
+  "rule": "For each non-trivial profile, superimpose the contour on the drawing view at high resolution and compare views at the drawing's isometric angle before declaring the part done.",
+  "tools": [
+   "catia_sketch_profile"
+  ],
+  "proof": "A wrong-way arc was found by visual review, not by any numeric check.",
+  "source": "builtin"
+ },
+ {
+  "id": "L025",
+  "title": "Run the regression suite after every MCP change, never while using the CATIA view",
+  "area": "process",
+  "severity": "medium",
+  "symptom": "Screenshots show test documents; tests fail after the user rotates the view.",
+  "error_patterns": [],
+  "cause": "The suite closes and recreates documents and drives the viewer.",
+  "rule": "Keep the regression scenarios all green after any change to the server, and do not manipulate CATIA manually while they run.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L026",
+  "title": "Test server changes through a harness that calls the dispatcher, not through reconnects",
+  "area": "process",
+  "severity": "low",
+  "symptom": "Every change requires a slow MCP client reconnect.",
+  "error_patterns": [],
+  "cause": "The MCP client caches the server process and tool schemas.",
+  "rule": "Drive the real server class from a script (schema listing and scenario runner), so each run re-reads the code. Reconnect the client only once at the end so it sees new schemas.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L027",
+  "title": "CATIA is one shared instance: serialise agents with a lock",
+  "area": "process",
+  "severity": "high",
+  "symptom": "Parallel agents step on each other's documents; one agent's close_all kills another's session.",
+  "error_patterns": [],
+  "cause": "Only one CATIA session exists and every call mutates shared state.",
+  "rule": "Send all calls through a single queue or lock (a harness), never directly from several agents. Start each scenario with catia_close_all or an explicit open, since another agent may have run in between.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L028",
+  "title": "Keep scenarios short and never list all faces of a dense part",
+  "area": "performance",
+  "severity": "high",
+  "symptom": "Listing faces/edges of a dense part (grooved tyre, wheel rims, big patterns) takes minutes at 100 % CPU and blocks everyone.",
+  "error_patterns": [],
+  "cause": "Topology enumeration costs about 50 ms to 250 ms per element.",
+  "rule": "Target a precise point instead of enumerating; limit listings to small parts or a focused search.",
+  "tools": [
+   "catia_list_faces",
+   "catia_list_edges"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L029",
+  "title": "Inspect before mutating; never invent names, indices, faces or edges",
+  "area": "process",
+  "severity": "high",
+  "symptom": "A call refers to a feature, sketch geometry index, face or component name that does not exist.",
+  "error_patterns": [],
+  "cause": "Names and indices are short-lived observations that change after each mutation.",
+  "rule": "Discover references with listing tools right before use (catia_sketch_get_geometry before an index-based constraint, catia_list_components before component names). Re-query after any mutation.",
+  "tools": [
+   "catia_sketch_constraint",
+   "catia_sketch_get_geometry"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L030",
+  "title": "Do not replay a mutation after a timeout or blocked state",
+  "area": "process",
+  "severity": "high",
+  "symptom": "A call timed out; retrying created a duplicate feature.",
+  "error_patterns": [],
+  "cause": "A timeout does not cancel the underlying COM call.",
+  "rule": "Stop mutating, inspect connection and document state, restore the last verified state, then continue. Default retry budget: one targeted retry when the cause is known and the fix is reversible.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L031",
+  "title": "Save, close and export only when required",
+  "area": "process",
+  "severity": "medium",
+  "symptom": "Files overwritten or documents closed unexpectedly.",
+  "error_patterns": [],
+  "cause": "Persistence and closing are side effects distinct from modelling.",
+  "rule": "Save, close and export only on request and report the actual produced paths. Screenshots are supporting evidence only, never a substitute for measurements.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L032",
+  "title": "Stop the chain on the first failure: do not stack features on a suspect state",
+  "area": "process",
+  "severity": "medium",
+  "symptom": "Several speculative features stacked on an unverified one.",
+  "error_patterns": [],
+  "cause": "Later successful updates do not retroactively validate an earlier unchecked feature.",
+  "rule": "Follow inspect, mutate, update, measure, decide for each step. Stop on the first failure or contradictory measurement.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L033",
+  "title": "Ambiguous drawing dimensions: measured geometry decides",
+  "area": "process",
+  "severity": "medium",
+  "symptom": "A dimension label (e.g. an 'R' value) seems to point to a different circle than assumed.",
+  "error_patterns": [],
+  "cause": "Drawings can be ambiguous and title-block scales can be wrong.",
+  "rule": "Measure the geometry of the (vector) drawing, cross-check views (section, top, isometric) and record the chosen interpretation.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L034",
+  "title": "Pick a modelling frame that matches the drawing",
+  "area": "process",
+  "severity": "low",
+  "symptom": "Coordinates are confusing and signs flip while translating drawing to CATIA.",
+  "error_patterns": [],
+  "cause": "The drawing's origin/axes were not mirrored in the model.",
+  "rule": "Choose the drawing's frame (origin on a main axis, revolution axis on Z when possible) and state it in the script docstring. When flipping a coordinate sign, also invert the direction of every arc.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L035",
+  "title": "Capture history by moving InWorkObject, then restore it",
+  "area": "process",
+  "severity": "low",
+  "symptom": "Step-by-step captures need the part at an earlier state.",
+  "error_patterns": [],
+  "cause": "Setting Part.InWorkObject = feature and calling Update shows the part at that step with the feature underlined in the tree.",
+  "rule": "For step captures, set InWorkObject to each feature in turn, then put the last feature back at the end.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L036",
+  "title": "Threads must be cosmetic; the cylinder keeps the nominal diameter",
+  "area": "process",
+  "severity": "low",
+  "symptom": "Modelled threads slow everything and change geometry.",
+  "error_patterns": [],
+  "cause": "catia_thread creates a cosmetic thread on the cylindrical face.",
+  "rule": "Model the cylinder at the nominal diameter and add catia_thread; do not model the helix.",
+  "tools": [
+   "catia_thread"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L037",
+  "title": "Deliver only implemented and verified capabilities",
+  "area": "process",
+  "severity": "low",
+  "symptom": "A guessed method name silently does the wrong thing.",
+  "error_patterns": [],
+  "cause": "Some operations (e.g. Remove Lump / 'Retrait de volumes') have no verified Automation signature.",
+  "rule": "Report such operations as unsupported and do them in the GUI, rather than shipping a guessed call.",
+  "tools": [
+   "catia_boolean_operation"
+  ],
+  "proof": "Remove Lump was left out of the boolean tool for lack of a verified signature.",
+  "source": "builtin"
+ },
+ {
+  "id": "L038",
+  "title": "Shaft/Groove need the revolution axis set as Sketch.CenterLine",
+  "area": "sketch",
+  "severity": "critical",
+  "symptom": "catia_shaft or catia_groove fails at update ('La méthode UpdateObject a échoué').",
+  "error_patterns": [
+   "UpdateObject",
+   "FirstAngle"
+  ],
+  "cause": "CATIA reads the revolution axis from Sketch.CenterLine (the Sketcher 'Axis' button). Variants proven to fail: line marked Construction = True, shaft.RevoluteAxis = CreateReferenceFromObject(line), SecondAngle.Value = 0, GeometricElements.Item('AbsoluteAxis').",
+  "rule": "Draw the axis with catia_sketch_line(is_axis=true) (or axis='h'/'v' on the feature) BEFORE catia_shaft/catia_groove. In COM: while the sketch is open for edition, sketch.CenterLine = line2D, then AddNewShaft/AddNewGroove(sketch), FirstAngle.Value, part.Update().",
+  "tools": [
+   "catia_shaft",
+   "catia_groove",
+   "catia_sketch_line"
+  ],
+  "proof": "Root cause found live after ruling out FirstAngle, SecondAngle, construction lines and reference objects one by one.",
+  "source": "builtin"
+ },
+ {
+  "id": "L039",
+  "title": "The axis line is excluded from the profile and need not be a construction line",
+  "area": "sketch",
+  "severity": "medium",
+  "symptom": "Unsure how to draw a revolve profile with its axis.",
+  "error_patterns": [],
+  "cause": "The CenterLine is taken out of the profile contour.",
+  "rule": "Draw the closed profile entirely on one side of the axis. The axis line does not need Construction = True.",
+  "tools": [
+   "catia_sketch_line",
+   "catia_shaft",
+   "catia_groove"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L040",
+  "title": "The sketch's absolute axis can serve as revolution axis, only while open for edition",
+  "area": "sketch",
+  "severity": "low",
+  "symptom": "axis='h' or 'v' fails, or GeometricElements.Item('AbsoluteAxis') does not exist.",
+  "error_patterns": [],
+  "cause": "The element name 'AbsoluteAxis' does not exist on a localized UI; the Sketch.AbsoluteAxis property works.",
+  "rule": "Call sketch.OpenEdition(), assign sketch.CenterLine from sketch.AbsoluteAxis (H or V), then close edition.",
+  "tools": [
+   "catia_shaft",
+   "catia_groove"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L041",
+  "title": "Factory2D has no CreateArc: an arc is CreateCircle with start and end angles",
+  "area": "sketch",
+  "severity": "high",
+  "symptom": "AttributeError on CreateArc.",
+  "error_patterns": [
+   "CreateArc"
+  ],
+  "cause": "Factory2D.CreateArc does not exist.",
+  "rule": "Use Factory2D.CreateCircle(cx, cy, r, start_angle, end_angle) with angles in radians, counter-clockwise.",
+  "tools": [
+   "catia_sketch_arc",
+   "catia_sketch_profile"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L042",
+  "title": "Separately drawn lines and arcs only join within 1e-4 mm",
+  "area": "sketch",
+  "severity": "high",
+  "symptom": "A profile looks closed but the feature fails or produces an open-contour error.",
+  "error_patterns": [],
+  "cause": "Independent geometries are not topologically connected.",
+  "rule": "For a real closed contour create the vertices with CreatePoint and link them through .StartPoint/.EndPoint (and .CenterPoint for arcs): use catia_sketch_profile or catia_sketch_two_circle_contour.",
+  "tools": [
+   "catia_sketch_profile",
+   "catia_sketch_two_circle_contour",
+   "catia_sketch_line"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L043",
+  "title": "An arc sweeping more than 180 degrees is usually a wrong direction",
+  "area": "sketch",
+  "severity": "critical",
+  "symptom": "A closed profile is accepted but a bulge of material remains (e.g. an R19.5 slot bottom drawn 'ccw' instead of 'cw' went round the wrong side).",
+  "error_patterns": [
+   "\\[check\\]",
+   "arc \\d+ sweeps",
+   "sweeps \\d+.{0,3} \\(> ?180"
+  ],
+  "cause": "CATIA accepts any valid contour. Changing a coordinate sign without inverting arc directions flips the side of the arc.",
+  "rule": "Read every '[check] arc N sweeps ...' line from catia_sketch_profile, compare the point the arc passes through with the drawing, and flip the arc 'direction' if it is on the other side. Inspect the [preview] PNG before creating the feature.",
+  "tools": [
+   "catia_sketch_profile"
+  ],
+  "proof": "A wrong-way arc gave a valid but wrong part, spotted by visual comparison with the drawing.",
+  "source": "builtin"
+ },
+ {
+  "id": "L044",
+  "title": "A self-intersecting profile is refused by the profile tool",
+  "area": "sketch",
+  "severity": "high",
+  "symptom": "'profile crosses itself (segment i crosses segment j near ...). Nothing was drawn.'",
+  "error_patterns": [
+   "profile crosses itself"
+  ],
+  "cause": "CATIA would accept it and leave an island of material inside the pocket.",
+  "rule": "Check each arc's 'direction' and the vertex order; fix the contour then redraw.",
+  "tools": [
+   "catia_sketch_profile"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L045",
+  "title": "A closed profile must return to its start point",
+  "area": "sketch",
+  "severity": "medium",
+  "symptom": "'closed profile does not return to its start: ends at ..., starts at ...'.",
+  "error_patterns": [
+   "closed profile does not return to its start"
+  ],
+  "cause": "The last vertex differs from the first.",
+  "rule": "Add a final segment (its 'to' may be omitted) so the contour closes.",
+  "tools": [
+   "catia_sketch_profile"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L046",
+  "title": "Sketch edition left open leaves stale results",
+  "area": "sketch",
+  "severity": "high",
+  "symptom": "Sketch changes do not propagate; IsUpToDate is True; Part.Update has no effect.",
+  "error_patterns": [],
+  "cause": "An error between OpenEdition and CloseEdition (typically in a VBScript) left the edition open; openings stack.",
+  "rule": "Call OpenEdition + CloseEdition again, plus one extra CloseEdition, then UpdateObject(sketch) and part.Update().",
+  "tools": [
+   "catia_update_part",
+   "catia_close_sketch"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L047",
+  "title": "Edit an unconstrained sketch with SetData; arc centres are separate elements",
+  "area": "sketch",
+  "severity": "medium",
+  "symptom": "Moving a circle or point does not move the arcs and lines attached to it.",
+  "error_patterns": [],
+  "cause": "Point2D.SetData / Circle2D.SetData only touch that element; an arc's centre point is a separate element; Line2D end points are not re-snapped.",
+  "rule": "Move the centre point too, and re-sync Line2D with SetData(x, y, dx, dy). Read coordinates in VBScript (array ByRef). Only valid for sketches without constraints.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L048",
+  "title": "Default sketch axes: xy H=X V=Y, yz H=Y V=Z, zx H=Z V=X",
+  "area": "sketch",
+  "severity": "medium",
+  "symptom": "Profile coordinates come out rotated or mirrored in a sketch on yz or zx.",
+  "error_patterns": [],
+  "cause": "The sketch's H and V directions differ per plane.",
+  "rule": "Proven defaults (GetAbsoluteAxisData): xy H=X V=Y; yz H=Y V=Z; zx H=Z V=X. To impose a frame use Sketch.SetAbsoluteAxisData((ox,oy,oz, hx,hy,hz, vx,vy,vz)).",
+  "tools": [
+   "catia_create_sketch"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L049",
+  "title": "A sketch cannot be placed on the face of another body",
+  "area": "sketch",
+  "severity": "high",
+  "symptom": "The sketch never resolves; Pad/Pocket on it fail; closing the document afterwards crashed CATIA twice.",
+  "error_patterns": [],
+  "cause": "CATIA cannot support a sketch on a face belonging to a different body.",
+  "rule": "Insert an offset plane coincident with the face into the active body and sketch on it (catia_create_sketch does this automatically). Holes are the exception: they accept a face of another body.",
+  "tools": [
+   "catia_create_sketch",
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L050",
+  "title": "Do not convert raw selection references to BRep names before sketching on a face",
+  "area": "topology",
+  "severity": "high",
+  "symptom": "Sketches.Add(ref) fails after CreateReferenceFromBRepName(..., WithTemporaryBody / WithPermanentBody).",
+  "error_patterns": [],
+  "cause": "The converted reference no longer works as a sketch support.",
+  "rule": "Use the raw selection reference (Selection_RSur/REdge:(...)) directly for sketch, fillet, chamfer and hole.",
+  "tools": [
+   "catia_create_sketch",
+   "catia_fillet",
+   "catia_chamfer",
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L051",
+  "title": "Feature sketches must be re-parented under their feature via InWorkObject",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "The sketch stays beside the feature at body level instead of under it in the tree.",
+  "error_patterns": [],
+  "cause": "AddNewPad/Pocket/Shaft/Groove only absorb the sketch under the feature when Part.InWorkObject = sketch just before (otherwise only the very first feature of a body does).",
+  "rule": "Set Part.InWorkObject = sketch immediately before creating the feature; test with sketch.Parent.Name (the feature name, else 'Sketches'). Do it only for the last sketch since the feature is inserted after the work object.",
+  "tools": [
+   "catia_pad",
+   "catia_pocket",
+   "catia_shaft",
+   "catia_groove"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L052",
+  "title": "Symmetric pad uses the first length on EACH side",
+  "area": "part",
+  "severity": "high",
+  "symptom": "A 150 mm symmetric pad measures 300 mm.",
+  "error_patterns": [],
+  "cause": "IsSymmetric mirrors the extent, so the first limit is applied on both sides.",
+  "rule": "For a total thickness T with symmetric extrusion, set FirstLimit.Dimension.Value = T / 2.",
+  "tools": [
+   "catia_pad"
+  ],
+  "proof": "A 150 lug came out 300 thick.",
+  "source": "builtin"
+ },
+ {
+  "id": "L053",
+  "title": "Pocket direction is relative to the sketch normal and the default can cut nothing",
+  "area": "part",
+  "severity": "critical",
+  "symptom": "catia_pocket succeeds but the volume does not change (cut goes into empty space).",
+  "error_patterns": [],
+  "cause": "DirectionOrientation is relative to the sketch normal (0 along, 1 against) and CATIA defaults to 1: it cuts into material for a sketch on a top face but into air for a sketch on the base plane of an extrusion.",
+  "rule": "Measure the body volume before and after; if it did not change, flip the direction (direction='auto' does this). Test for 'changed', not 'decreased': in a body that holds removed volume a pocket makes the measured volume go up.",
+  "tools": [
+   "catia_pocket"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L054",
+  "title": "Limit modes: 0 dimension, 1 up to next, 2 up to last, 3 up to plane",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "Unsure which LimitMode value to use.",
+  "error_patterns": [],
+  "cause": "CATIA limit enum codes.",
+  "rule": "FirstLimit.LimitMode: 0 = dimension, 1 = up to next, 2 = up to last. For holes, BottomLimit.LimitMode = 3 (up to plane) with LimitingElement = face reference.",
+  "tools": [
+   "catia_pocket",
+   "catia_pad",
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L055",
+  "title": "Hole: AddNewHoleFromPoint(x, y, z, faceRef, depth) and Type 0 simple, 1 tapered, 2 counterbored, 3 countersunk",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "Wrong hole type produced.",
+  "error_patterns": [],
+  "cause": "Hole type enum codes.",
+  "rule": "Use ShapeFactory.AddNewHoleFromPoint(x, y, z, faceRef, depth) then set Type: 0 simple, 1 tapered, 2 counterbored, 3 countersunk.",
+  "tools": [
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L056",
+  "title": "Tapered hole angle is HeadAngle; counterbored uses HeadDiameter and HeadDepth",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "Taper or counterbore parameters are ignored.",
+  "error_patterns": [],
+  "cause": "The taper angle drives HoleTaperedType.1\\Angle through HeadAngle.Value.",
+  "rule": "Tapered: hole.HeadAngle.Value = angle. Counterbored: HeadDiameter + HeadDepth.",
+  "tools": [
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L057",
+  "title": "Countersunk hole has NO HeadDiameter: use HeadDepth and HeadAngle",
+  "area": "part",
+  "severity": "high",
+  "symptom": "Setting HeadDiameter on a countersunk hole raises an error.",
+  "error_patterns": [
+   "HeadDiameter"
+  ],
+  "cause": "A countersunk hole is driven by depth and angle.",
+  "rule": "Set HeadDepth and HeadAngle; convert a wanted head diameter to the equivalent depth from the angle.",
+  "tools": [
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L058",
+  "title": "Hole 'up to plane': BottomLimit.LimitMode = 3 and LimitingElement = face ref",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "A hole stops at the wrong depth or fails to reach the target face.",
+  "error_patterns": [],
+  "cause": "Up-to-plane needs both the limit mode and the limiting element.",
+  "rule": "Set BottomLimit.LimitMode = 3 and BottomLimit.LimitingElement = face reference (a face of another body is accepted).",
+  "tools": [
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L059",
+  "title": "Every hole creates a second internal sketch at update",
+  "area": "part",
+  "severity": "low",
+  "symptom": "An unexpected 'Esquisse.N' / 'Sketch.N' appears after part.Update() for each hole.",
+  "error_patterns": [],
+  "cause": "A hole carries two sketches: the positioning point sketch and an internal profile sketch created at update time.",
+  "rule": "Rename the two sketches (e.g. Esq_<hole>_Position / _Profile) and hide the internal one so the tree audit passes.",
+  "tools": [
+   "catia_hole",
+   "catia_get_tree"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L060",
+  "title": "Hole threading mode: 0 = threaded, 1 = smooth",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "A threaded hole request produced a smooth hole.",
+  "error_patterns": [],
+  "cause": "CatHoleThreadingMode 0 is threaded (tapped) and 1 is smooth; the tool used to set 1.",
+  "rule": "Use 0 for a tapped hole, 1 for a smooth one.",
+  "tools": [
+   "catia_hole"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L061",
+  "title": "Chamfer modes are counter-intuitive: 0 = two lengths, 1 = length and angle",
+  "area": "part",
+  "severity": "critical",
+  "symptom": "A chamfer '2 x 45' becomes a 45 mm chamfer and the update fails.",
+  "error_patterns": [
+   "UpdateObject"
+  ],
+  "cause": "AddNewChamfer(edge, propagation, mode, orientation, L1, L2_or_angle): mode 0 is two lengths, mode 1 is length + angle.",
+  "rule": "For length + angle use mode 1 (angle in degrees); mode 0 with 45 makes a 45 mm second length. Propagation 0 = tangency.",
+  "tools": [
+   "catia_chamfer"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L062",
+  "title": "Tangency propagation code differs: fillet uses 1, chamfer uses 0",
+  "area": "part",
+  "severity": "high",
+  "symptom": "Fillet or chamfer follows the wrong edge chain or fails.",
+  "error_patterns": [],
+  "cause": "Fillet: AddNewSolidEdgeFilletWithConstantRadius(ref, 1, radius) where 1 = catTangencyFilletEdgePropagation; chamfer propagation 0 = tangency.",
+  "rule": "Use propagation 1 for fillets and 0 for chamfers. Add further edges with fillet.AddObjectToFillet(ref).",
+  "tools": [
+   "catia_fillet",
+   "catia_chamfer"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L063",
+  "title": "A fillet on a convex edge at about 120 degrees between an arc and a plane may be refused",
+  "area": "part",
+  "severity": "low",
+  "symptom": "Fillet update fails even with a small radius (R10 on a convex 120 degree edge between an R50 arc face and a planar face).",
+  "error_patterns": [],
+  "cause": "Geometrical limitation of the edge configuration.",
+  "rule": "Check edge convexity and geometry before insisting; try another edge selection, a chamfer, or model the round in the sketch.",
+  "tools": [
+   "catia_fillet"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L064",
+  "title": "Thread feature: Diameter, Pitch and Depth are plain doubles, not Parameters",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "thread.Diameter.Value fails.",
+  "error_patterns": [],
+  "cause": "AddNewThreadWithRef(cylinderFace, limitFace) exposes plain doubles.",
+  "rule": "Assign thread.Diameter, thread.Pitch, thread.Depth directly (mm). Example: M100x4 over 47 mm: diameter 100, pitch 4, depth 47.",
+  "tools": [
+   "catia_thread"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L065",
+  "title": "Thread feature is born a tap: set polarity explicitly",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "The thread is created as an internal thread (Taraudage) when an external thread was wanted.",
+  "error_patterns": [],
+  "cause": "The new feature is a tap until SetExplicitPolarity is called (CatThreadPolarity catThread = 0, catTap = 1; CatThreadSide right = 0, left = 1).",
+  "rule": "Call SetExplicitPolarity(0) for a thread (external) and 1 for a tap; Side 0 is right-hand.",
+  "tools": [
+   "catia_thread"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L066",
+  "title": "Circular pattern takes 12 arguments; an origin plane as centre and axis rotates around its normal",
+  "area": "part",
+  "severity": "high",
+  "symptom": "AddNewCircPattern with 8 arguments fails or has no axis.",
+  "error_patterns": [],
+  "cause": "Signature: AddNewCircPattern(shape, nRadial, nAngular, radialStep, angularStep, radialPos, angularPos, center, axis, reversed, rotation, radiusAligned).",
+  "rule": "Pass all 12 arguments. Use an origin plane as both centre and axis to rotate around that plane's normal.",
+  "tools": [
+   "catia_circ_pattern"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L067",
+  "title": "Circular pattern parameter modes and unequal spacing",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "Unequal angular spacing does not work as expected.",
+  "error_patterns": [],
+  "cause": "CircularPatternParameters: 0 instances + spacing, 1 complete crown, 2 unequal spacing (only mode accepting SetInstanceAngularSpacing; index semantics unclear). DesactivatePosition(u, v) numbering is inconsistent ((1,2) removes occurrence 2, (0,2) occurrence 3, (1,0) occurrence 4).",
+  "rule": "Do not use DesactivatePosition. For unequal angles create one 2-instance pattern per angle.",
+  "tools": [
+   "catia_circ_pattern"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L068",
+  "title": "Rectangular pattern takes 12 arguments; directions are origin planes",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "Rectangular pattern goes in the wrong direction or fails.",
+  "error_patterns": [],
+  "cause": "Directions are given by origin planes (their normal).",
+  "rule": "Pass 12 arguments and origin planes for the two directions.",
+  "tools": [
+   "catia_rect_pattern"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L069",
+  "title": "Repeating an 'up to last' pocket copies the cut shape, not the limit rule",
+  "area": "part",
+  "severity": "high",
+  "symptom": "7 copies of a radial hole did not go through (the original only cut 1.7 mm in a groove bottom).",
+  "error_patterns": [],
+  "cause": "A pattern replicates the shape removed by the original, not its up-to-last limit.",
+  "rule": "Use a fixed depth for patterned pockets. Check the volume change announced by the server for each pattern.",
+  "tools": [
+   "catia_circ_pattern",
+   "catia_rect_pattern",
+   "catia_pocket"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L070",
+  "title": "Shell and thickness signatures",
+  "area": "part",
+  "severity": "low",
+  "symptom": "Shell or thickness wrong faces or wrong sides.",
+  "error_patterns": [],
+  "cause": "AddNewShell(face, insideThickness, outsideThickness); AddNewThickness(face, offset).",
+  "rule": "Use those signatures; volume proves the effect (a shell 8000 -> 3392 mm3 = 8000 - 36 x 16 x 8). Negative thickness offset removes material.",
+  "tools": [
+   "catia_shell",
+   "catia_thickness"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L071",
+  "title": "Draft signature: AddNewDraft has 10 arguments",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "Draft fails or ignores the pull direction.",
+  "error_patterns": [],
+  "cause": "AddNewDraft(face, neutral, 0, neutral, dx, dy, dz, 0, angle, 0); extra faces via draft.DraftDomains.Item(1).AddFaceToDraft(ref).",
+  "rule": "Pass all 10 arguments with the pulling direction (dx, dy, dz); add other faces to the first domain.",
+  "tools": [
+   "catia_draft"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L072",
+  "title": "Mirror mirrors the whole body, not one feature",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "catia_mirror doubled everything.",
+  "error_patterns": [],
+  "cause": "AddNewMirror(plane) symmetrises the entire current body.",
+  "rule": "Build the feature in its own body if only a subset must be mirrored.",
+  "tools": [
+   "catia_mirror"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L073",
+  "title": "Groove or pocket can be the first feature of an empty body",
+  "area": "part",
+  "severity": "low",
+  "symptom": "Uncertainty about 'machined body' method.",
+  "error_patterns": [],
+  "cause": "The body then holds the removed volume, which a boolean removes from the target body.",
+  "rule": "This is valid; measured volume of such a body goes UP when a pocket is added.",
+  "tools": [
+   "catia_groove",
+   "catia_pocket",
+   "catia_boolean_operation"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L074",
+  "title": "Boolean operations take ONE argument and act in the in-work body",
+  "area": "boolean",
+  "severity": "critical",
+  "symptom": "AddNewAssemble/Add/Remove/Intersect/UnionTrim(target, tool) fails or applies to the wrong body.",
+  "error_patterns": [],
+  "cause": "The tool body is the only argument; the operation is performed in Part.InWorkObject.",
+  "rule": "Set the target body as InWorkObject, then call AddNewAssemble(toolBody). Same for AddNewAdd, AddNewRemove, AddNewIntersect, AddNewUnionTrim.",
+  "tools": [
+   "catia_boolean_operation"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L075",
+  "title": "After a boolean the tool body leaves Part.Bodies",
+  "area": "boolean",
+  "severity": "high",
+  "symptom": "The operand body cannot be found by name after assemble/add/remove.",
+  "error_patterns": [],
+  "cause": "It is absorbed under the boolean feature.",
+  "rule": "Access it via the boolean feature's .Body (e.g. Shapes.Item('Assemble_x').Body). Its features appear framed in the tree (normal rendering).",
+  "tools": [
+   "catia_boolean_operation",
+   "catia_get_tree",
+   "catia_list_bodies"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L076",
+  "title": "Topology search must use Topology.CGMFace / CGMEdge / CGMVertex",
+  "area": "topology",
+  "severity": "critical",
+  "symptom": "'La méthode Search a échoué' for sel.Search('Topology.Edge,sel') or 'Topology.Face,sel'.",
+  "error_patterns": [
+   "La m.thode Search a .chou",
+   "method Search failed",
+   "Topology\\.(Face|Edge)\\b"
+  ],
+  "cause": "The spellings Topology.Face and Topology.Edge always fail; CGM types are the valid ones.",
+  "rule": "Search 'Topology.CGMFace,sel', 'Topology.CGMEdge,sel' or 'Topology.CGMVertex,sel'.",
+  "tools": [
+   "catia_list_edges",
+   "catia_list_faces",
+   "catia_fillet"
+  ],
+  "proof": "This bug broke edge listing and edge-based fillets from the start of the server.",
+  "source": "builtin"
+ },
+ {
+  "id": "L077",
+  "title": "There is no searchable volume topology",
+  "area": "topology",
+  "severity": "medium",
+  "symptom": "Search with Topology.CGMVolume / CGMSolid fails.",
+  "error_patterns": [
+   "CGMVolume|CGMSolid"
+  ],
+  "cause": "Those types do not exist.",
+  "rule": "Measure a body via its Body reference (volume, area, centre of gravity) instead of searching for a solid.",
+  "tools": [
+   "catia_get_inertia"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L078",
+  "title": "Search scope: feature versus body, and filter Wire and GSM elements",
+  "area": "topology",
+  "severity": "high",
+  "symptom": "A face point returns a sketch edge or an infinite plane; bounding box blows up to +-100 m.",
+  "error_patterns": [],
+  "cause": "Searching a Body also returns Wire elements (sketch edges) and GSM elements (inserted planes appear as infinite faces).",
+  "rule": "Search on a feature to get its own faces/edges (except the first feature of a body, which equals the result); search the Body for the current result. Exclude DisplayNames containing 'Wire' or 'GSM'.",
+  "tools": [
+   "catia_list_faces",
+   "catia_list_edges",
+   "catia_get_bounding_box"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L079",
+  "title": "Designate geometry by a 3D point, with a temporary point and GetMinimumDistance",
+  "area": "topology",
+  "severity": "high",
+  "symptom": "Need a face or edge reference without a GUI selection.",
+  "error_patterns": [],
+  "cause": "A temporary point HybridShapeFactory.AddNewPointCoord(x, y, z) (not added to the tree, then .Compute) gives a Measurable; GetMinimumDistance to every found face/edge = 0 identifies the element passing through the point.",
+  "rule": "Pick a point strictly inside a face (not on an edge, otherwise two faces are at distance 0), coordinates in the part's frame. Do it for all points of a call in one VBScript and stop as soon as all are found.",
+  "tools": [
+   "catia_fillet",
+   "catia_chamfer",
+   "catia_hole",
+   "catia_create_sketch"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L080",
+  "title": "Pierced planar faces have their centre of gravity in the hole",
+  "area": "topology",
+  "severity": "medium",
+  "symptom": "A point at a face's COG is not on the face (flange, washer, rim).",
+  "error_patterns": [],
+  "cause": "The COG of a face with a hole lies in the void.",
+  "rule": "Use the guaranteed 'inside_point' returned by catia_list_faces (spiral search from the COG in the face plane until distance 0).",
+  "tools": [
+   "catia_list_faces"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L081",
+  "title": "A face or axis point must be exact: 0.01 mm off fails",
+  "area": "topology",
+  "severity": "high",
+  "symptom": "'closest is 0.010 mm away' when designating a face at 53.99 instead of 54.",
+  "error_patterns": [
+   "closest is [\\d.,]+ mm away"
+  ],
+  "cause": "The point must lie exactly on the face; an axis point must be exactly at the cylinder radius, not in a bore or slot.",
+  "rule": "Use exact values from catia_list_faces (inside_point, radius), never rounded or measured approximations.",
+  "tools": [
+   "catia_coincidence_constraint",
+   "catia_contact_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L082",
+  "title": "Geometry designation costs about 50 ms per candidate",
+  "area": "performance",
+  "severity": "medium",
+  "symptom": "Edge designation on a dense part takes tens of seconds.",
+  "error_patterns": [],
+  "cause": "Each GetMinimumDistance costs about 50 ms inside CATIA; 900 edges can take 45 s.",
+  "rule": "Typical parts take 1 to 3 s. Avoid designating on very dense parts in loops.",
+  "tools": [
+   "catia_fillet",
+   "catia_chamfer",
+   "catia_coincidence_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L083",
+  "title": "Raw selection references work for fillet, chamfer, sketch on face and hole",
+  "area": "topology",
+  "severity": "medium",
+  "symptom": "Unsure which reference form to use.",
+  "error_patterns": [],
+  "cause": "Selection_RSur/REdge references are accepted directly by AddNewSolidEdgeFilletWithConstantRadius + AddObjectToFillet, AddNewChamfer, Sketches.Add(ref) and AddNewHoleFromPoint (LimitingElement).",
+  "rule": "Pass the raw selection reference as is.",
+  "tools": [
+   "catia_fillet",
+   "catia_chamfer",
+   "catia_hole",
+   "catia_create_sketch"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L084",
+  "title": "Avoid hundreds of topological searches just to verify positions",
+  "area": "performance",
+  "severity": "medium",
+  "symptom": "The CATIA selection flickered for 90 s after 144 topological searches used to check positions.",
+  "error_patterns": [],
+  "cause": "Each search updates the selection highlight.",
+  "rule": "Verify with ONE search plus a read, or with the body volume.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L085",
+  "title": "Measurable.GeometryName codes: 4 cylinder, 6 cone, 7 plane",
+  "area": "topology",
+  "severity": "low",
+  "symptom": "Need the surface type of a face.",
+  "error_patterns": [],
+  "cause": "GeometryName returns a numeric code.",
+  "rule": "4 = cylinder, 6 = cone, 7 = plane.",
+  "tools": [
+   "catia_list_faces"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L086",
+  "title": "Units: area in m2, coordinates in mm",
+  "area": "measure",
+  "severity": "medium",
+  "symptom": "Areas look 1e6 too small.",
+  "error_patterns": [],
+  "cause": "SPA workbench returns Area in square metres, GetCOG/GetPlane coordinates in millimetres.",
+  "rule": "Convert area from m2 to mm2 (x1e6) before comparing.",
+  "tools": [
+   "catia_get_inertia",
+   "catia_measure_distance"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L087",
+  "title": "GetCOG fails on an edge; use GetMinimumDistance or GetPointsOnCurve",
+  "area": "measure",
+  "severity": "medium",
+  "symptom": "GetCOG on an edge reference raises.",
+  "error_patterns": [],
+  "cause": "COG only works on surfaces and bodies.",
+  "rule": "Use GetMinimumDistance or GetPointsOnCurve for edges.",
+  "tools": [
+   "catia_measure_distance"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L088",
+  "title": "Some measurements never work, even in VBScript",
+  "area": "measure",
+  "severity": "high",
+  "symptom": "GetMinimumDistancePoints returns an empty array; GetMinimumDistance with a Body reference fails both ways; measuring a GSD Extremum computed on a body fails.",
+  "error_patterns": [
+   "GetMinimumDistance"
+  ],
+  "cause": "Limitations of CATIA's measure API.",
+  "rule": "Do not use these. Measure to faces, edges or points; do not try to measure distance to a Body reference.",
+  "tools": [
+   "catia_measure_distance"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L089",
+  "title": "Volume, area and centre of gravity: use Measurable on the Body reference",
+  "area": "measure",
+  "severity": "medium",
+  "symptom": "Volume measurements are slow or wrong.",
+  "error_patterns": [],
+  "cause": "Body-level Measurable is the fast and correct source.",
+  "rule": "Use catia_get_inertia (Body reference) for volume/area/COG. GetAxis returns a scaled vector: normalise it.",
+  "tools": [
+   "catia_get_inertia"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L090",
+  "title": "Exact bounding box is slow: about 0.25 s per face",
+  "area": "measure",
+  "severity": "medium",
+  "symptom": "catia_get_bounding_box takes over a minute on a complex part.",
+  "error_patterns": [],
+  "cause": "The only exact method measures the distance of 6 far planes to every face of the result.",
+  "rule": "Expect about 0.25 s per face (300 faces = 70 s). Prefer catia_get_inertia unless the exact box is needed.",
+  "tools": [
+   "catia_get_bounding_box"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L091",
+  "title": "CatConstraintType codes: 0 fix, 1 offset, 2 coincidence, 3 concentricity, 6 angle, 7 planar angle, 20 surface contact",
+  "area": "assembly",
+  "severity": "critical",
+  "symptom": "Constraint created with the wrong meaning (coincidence with 0 = reference/fix, angle with 2, contact with 3 = concentricity).",
+  "error_patterns": [],
+  "cause": "Type codes were guessed in the first version. Also: 8 parallelism, 11 perpendicularity, 21 line contact, 22 point contact.",
+  "rule": "Use: 0 fix, 1 offset, 2 coincidence, 3 concentricity, 6 angle, 7 planar angle, 20 surface contact. Read codes from the MECMOD type library, never from memory.",
+  "tools": [
+   "catia_fix_constraint",
+   "catia_coincidence_constraint",
+   "catia_offset_constraint",
+   "catia_angle_constraint",
+   "catia_contact_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L092",
+  "title": "Constraint Status codes: 0 OK, 1 not satisfied, 2 orientation, 3 value, 4 wrong geometry type, 5 broken",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "A constraint was created but the assembly is wrong.",
+  "error_patterns": [
+   "wrong geometry type",
+   "wrong orientation",
+   "not satisfied",
+   "constraint '.*' created, status (?!OK)"
+  ],
+  "cause": "cst.Status reports the solver state.",
+  "rule": "Check the status after each constraint: only 0 is OK. 2 = wrong orientation/side, 4 = wrong geometry type (e.g. cylinder face instead of its axis), 5 = broken. Use catia_update_assembly then catia_list_constraints.",
+  "tools": [
+   "catia_list_constraints",
+   "catia_update_assembly"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L093",
+  "title": "Cylinder coincidence must target the axis, not the face",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "Coincidence between two cylinders reports 'wrong geometry type'.",
+  "error_patterns": [
+   "wrong geometry type"
+  ],
+  "cause": "A cylindrical face reference is the wrong geometry type for a coincidence.",
+  "rule": "Reference the axis: \"<Root>/<Instance>/!Axis:(<selection name of the cylindrical face>)\" (axis_point in the tool).",
+  "tools": [
+   "catia_coincidence_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L094",
+  "title": "Product-context references use CreateReferenceFromName with a full path",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "A reference to a component face or plane cannot be resolved.",
+  "error_patterns": [],
+  "cause": "Format: \"<Root>/<Instance>/!<selection name of the face in its part>\"; whole component (fix): \"<Root>/<Instance>/!<Root>/<Instance>/\"; origin plane: \"<...>/!Plan zx\" (localized plane name).",
+  "rule": "Build references with exactly that syntax; plane names are localized.",
+  "tools": [
+   "catia_fix_constraint",
+   "catia_coincidence_constraint",
+   "catia_contact_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L095",
+  "title": "Designating geometry in a product part needs Documents.Open, which loads a 2nd copy",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "Topological search returns nothing for a part without a window; with alerts on, a modal 'open again?' box blocks; with alerts off a SECOND copy loads (8 documents for 3 components).",
+  "error_patterns": [],
+  "cause": "CATIA only searches topology in a document with a window.",
+  "rule": "Open with DisplayFileAlerts = False, take the selection name (identical for the instance since topology is the same), then close the extra copy immediately (it is not used by any product); otherwise it makes Save As of the real part fail. Re-activate the product window afterwards.",
+  "tools": [
+   "catia_coincidence_constraint",
+   "catia_contact_constraint",
+   "catia_offset_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L096",
+  "title": "Components are added with Products.AddNewComponent, not AddNewProduct",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "AddNewProduct('Part') creates a Product, not a Part.",
+  "error_patterns": [],
+  "cause": "Wrong factory method.",
+  "rule": "Use Products.AddNewComponent('Part', partNumber) to create a part inside a product.",
+  "tools": [
+   "catia_add_new_part"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L097",
+  "title": "A part used by an open product cannot be closed",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "Close does nothing (on the document and on its window); a 'while documents remain: close' loop ran forever.",
+  "error_patterns": [],
+  "cause": "CATIA keeps parts referenced by open products loaded.",
+  "rule": "Close products first, then parts, in ONE pass (catia_close_all). Never write unbounded closing loops.",
+  "tools": [
+   "catia_close_all",
+   "catia_close_document"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L098",
+  "title": "SaveAs of the root product alone fails once a part is modified",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "'les données importées ont été modifiées dans la session'.",
+  "error_patterns": [
+   "donn.es import.es ont .t. modifi.es",
+   "imported data.*modified"
+  ],
+  "cause": "Designating geometry marks the parts modified, and the root cannot be saved alone.",
+  "rule": "Save ALL documents into the target folder (catia_save_all); original files are never overwritten.",
+  "tools": [
+   "catia_save_all"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L099",
+  "title": "SaveAs raises a generic error although the file is written",
+  "area": "com",
+  "severity": "high",
+  "symptom": "'La méthode SaveAs a échoué' for a part (or a part inside an assembly), yet the file exists.",
+  "error_patterns": [
+   "La m.thode SaveAs a .chou",
+   "method SaveAs failed"
+  ],
+  "cause": "CATIA raises while the file IS written and the document is re-pointed (FullName = target, Saved = True).",
+  "rule": "Judge by the result: file exists, modification time after the call, FullName equals the target. Re-raise only if the file really was not written.",
+  "tools": [
+   "catia_save_document",
+   "catia_save_all"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L100",
+  "title": "SaveAs to a file already loaded in the session fails",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "SaveAs fails with a generic error when the target file is loaded.",
+  "error_patterns": [],
+  "cause": "CATIA refuses to overwrite a document that is open.",
+  "rule": "Start from a clean session (catia_close_all) before saving to an already loaded path.",
+  "tools": [
+   "catia_save_all",
+   "catia_save_document",
+   "catia_close_all"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L101",
+  "title": "Plane-to-plane offset distance has no reliable sign",
+  "area": "assembly",
+  "severity": "critical",
+  "symptom": "40 constraints report OK but two wheels are stacked on the same side, nuts sit outside and a bar is flipped.",
+  "error_patterns": [],
+  "cause": "The solver accepts either side of an offset; status stays OK.",
+  "rule": "Prefer unambiguous constraints: contact (opposite normals) and coincidence of planar faces on real faces. If an offset is unavoidable, pass orientation='opposite' or 'same' and verify the resulting pose, inverting the sign or orientation on mismatch.",
+  "tools": [
+   "catia_offset_constraint",
+   "catia_contact_constraint",
+   "catia_coincidence_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L102",
+  "title": "An OK constraint status does not prove the component is in the intended place",
+  "area": "assembly",
+  "severity": "critical",
+  "symptom": "All constraints OK yet a component ended up in another valid solver solution.",
+  "error_patterns": [],
+  "cause": "The solver can jump into a wrong but valid solution.",
+  "rule": "Pre-position each component exactly (catia_move_component with the computed translation/rotation), then constrain, then compare each component's final pose with the intended pose and fail if the solver moved one.",
+  "tools": [
+   "catia_move_component",
+   "catia_update_assembly",
+   "catia_list_components"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L103",
+  "title": "Fix the reference component first and constrain the rest to it",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "Everything drifts when the assembly updates.",
+  "error_patterns": [],
+  "cause": "Nothing anchors the assembly.",
+  "rule": "Fix the reference (largest) component with catia_fix_constraint, then add the others with named constraints.",
+  "tools": [
+   "catia_fix_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L104",
+  "title": "Do not over-constrain rotation: a redundant constraint creates a conflict",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "Constraint status 1/5 after adding a second constraint on the same rotation.",
+  "error_patterns": [],
+  "cause": "Free rotation about an axis is fine when it has no functional meaning.",
+  "rule": "Leave rotation free (pre-positioning fixes it) unless it matters (aligned bolt holes: add a second coincidence on a hole axis, never a redundant one).",
+  "tools": [
+   "catia_coincidence_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L105",
+  "title": "Coincidence on axes for coaxial parts, contact for planar seating",
+  "area": "assembly",
+  "severity": "low",
+  "symptom": "Uncertainty on which constraint to use.",
+  "error_patterns": [],
+  "cause": "Standard practice proven on assemblies.",
+  "rule": "Coaxiality: coincidence of the two axes. Planar seating: surface contact. Distance: offset. Give constraints role-based names (Fixed_, Coax_, Contact_, Dist_).",
+  "tools": [
+   "catia_coincidence_constraint",
+   "catia_contact_constraint"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L106",
+  "title": "Planar washers or nuts tangent to a curved bore intersect by their corners",
+  "area": "assembly",
+  "severity": "low",
+  "symptom": "0.9 mm interference on a nut or washer seated on a bore.",
+  "error_patterns": [],
+  "cause": "The corners of a polygon enter a curved surface.",
+  "rule": "Offset the component slightly and re-run catia_clash_analysis.",
+  "tools": [
+   "catia_clash_analysis"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L107",
+  "title": "Clash analysis: expect zero clashes except deliberate fits",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "Interferences reported between components.",
+  "error_patterns": [],
+  "cause": "Press fits, cosmetic threads and toroidal seals modelled at rest legitimately interfere (e.g. 0.5 mm radial press fit).",
+  "rule": "Run catia_clash_analysis after assembling. A correct assembly has 0 clash apart from intended interferences, which must be explained in the documentation. The analysis object is removed afterwards.",
+  "tools": [
+   "catia_clash_analysis"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L108",
+  "title": "Never guess component instance names; list them",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "A constraint fails because the instance path is wrong.",
+  "error_patterns": [],
+  "cause": "Instance names are '<PartNumber>.<k>' and a sub-assembly's children are addressed 'Sub.1/Piece.1'; purchased parts use their full part number.",
+  "rule": "Call catia_list_components and copy the names. Insert a sub-assembly by its CATProduct file.",
+  "tools": [
+   "catia_list_components",
+   "catia_add_component",
+   "catia_add_sub_assembly"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L109",
+  "title": "Repeated fasteners: one instance each, pre-positioned and constrained",
+  "area": "assembly",
+  "severity": "low",
+  "symptom": "Bolt patterns are slow or wrong with a single constraint.",
+  "error_patterns": [],
+  "cause": "Each instance needs its own placement and constraints.",
+  "rule": "Create one instance per fastener (catia_duplicate_component), pre-position each, then add coaxiality with its hole and contact under the head.",
+  "tools": [
+   "catia_duplicate_component"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L110",
+  "title": "Product-level update is required for constraints to move parts",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "Constraints exist but parts did not move.",
+  "error_patterns": [],
+  "cause": "Constraints only reposition components on update.",
+  "rule": "Call catia_update_assembly after adding constraints and check that all constraints are OK.",
+  "tools": [
+   "catia_update_assembly"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L111",
+  "title": "Assembly checklist: all constraints OK, no default names, zero unexplained clash",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "Assembly declared finished but hidden problems remain.",
+  "error_patterns": [],
+  "cause": "Assembly quality has three measurable criteria.",
+  "rule": "Verify catia_update_assembly says all OK, catia_list_constraints shows no default names, and catia_clash_analysis has 0 clash except justified fits.",
+  "tools": [
+   "catia_update_assembly",
+   "catia_list_constraints",
+   "catia_clash_analysis"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L112",
+  "title": "Capture the CATIA window with PrintWindow, not a screen copy",
+  "area": "display",
+  "severity": "high",
+  "symptom": "A screenshot shows another window (a game) instead of CATIA.",
+  "error_patterns": [],
+  "cause": "BitBlt copies the pixels of whatever window is in front.",
+  "rule": "Use PrintWindow(hwnd, dc, PW_RENDERFULLCONTENT) so CATIA draws itself, even when hidden. Find the window through the CNEXT.exe process, not a title containing 'CATIA'. Never take a full-screen capture of the user's desktop.",
+  "tools": [
+   "catia_screenshot"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L113",
+  "title": "A minimised CATIA window captures as a blank image",
+  "area": "display",
+  "severity": "medium",
+  "symptom": "PrintWindow returns an empty image.",
+  "error_patterns": [],
+  "cause": "A minimised window does not render.",
+  "rule": "Restore it with SW_SHOWNOACTIVATE and HWND_BOTTOM (no focus steal, stays behind the user's windows) and re-maximise afterwards if it was maximised.",
+  "tools": [
+   "catia_screenshot"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L114",
+  "title": "Tree collapsed on screenshots: enable AutoExpandActivation",
+  "area": "display",
+  "severity": "low",
+  "symptom": "The specification tree is folded in captures.",
+  "error_patterns": [],
+  "cause": "Tree expansion is a session setting.",
+  "rule": "Set SettingControllers.Item('CATCafTreeVizManipSettingCtrl').AutoExpandActivation = True on connect (session only).",
+  "tools": [
+   "catia_screenshot",
+   "catia_connect"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L115",
+  "title": "CATIA is Z-up: standard view vectors",
+  "area": "display",
+  "severity": "medium",
+  "symptom": "Isometric view lays the part on its side.",
+  "error_patterns": [],
+  "cause": "A Y-up view table was used.",
+  "rule": "Use CATIA's own directions: front sight (0,1,0) up (0,0,1); back (0,-1,0); top sight (0,0,-1) up (0,1,0); bottom (0,0,1) up (0,-1,0); left (1,0,0); right (-1,0,0); isometric sight (-1,-1,-1) up (-1,-1,2). Keep 'up' perpendicular to 'sight'.",
+  "tools": [
+   "catia_set_view"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L116",
+  "title": "Clean the display before presentation screenshots",
+  "area": "display",
+  "severity": "low",
+  "symptom": "Captures show planes, sketches, axis systems and constraint symbols.",
+  "error_patterns": [],
+  "cause": "Everything is visible by default, including in sub-assemblies (green markers stay if only root ones are hidden).",
+  "rule": "Use catia_clean_display before screenshots: hide origin/offset planes, sketches, axis systems and constraint symbols including sub-assemblies, and collapse the tree after the first view.",
+  "tools": [
+   "catia_clean_display",
+   "catia_screenshot"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L117",
+  "title": "Do not Reframe after every operation",
+  "area": "display",
+  "severity": "low",
+  "symptom": "The view jumps and everything is slow.",
+  "error_patterns": [],
+  "cause": "Reframe redraws and moves the view.",
+  "rule": "Refresh once at the end of each tool call; call catia_fit_all on demand only.",
+  "tools": [
+   "catia_fit_all"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L118",
+  "title": "Offset planes inserted for sketches must be hidden",
+  "area": "display",
+  "severity": "low",
+  "symptom": "Coincident offset planes clutter the view and tree.",
+  "error_patterns": [],
+  "cause": "They are helper geometry created for sketch-on-other-body.",
+  "rule": "Hide them and reuse an existing one instead of creating duplicates.",
+  "tools": [
+   "catia_create_sketch"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L119",
+  "title": "Screenshots are supporting evidence only",
+  "area": "process",
+  "severity": "low",
+  "symptom": "A plausible screenshot was used as proof.",
+  "error_patterns": [],
+  "cause": "A picture cannot prove dimensions.",
+  "rule": "Prefer numeric and structural verification (volume, bounding box, parameters, constraint status); use screenshots as a final visual check.",
+  "tools": [
+   "catia_screenshot"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L120",
+  "title": "Verify a part visually at the drawing's viewing angle before declaring it finished",
+  "area": "drawing",
+  "severity": "high",
+  "symptom": "Part matches numbers but differs from the drawing (missing detail or wrong feature).",
+  "error_patterns": [],
+  "cause": "Numeric checks miss shape differences.",
+  "rule": "Compare the CATIA capture with the drawing's isometric view, using the same viewing angle (catia_set_view isometric variants). Everything drawn must be present, nothing extra.",
+  "tools": [
+   "catia_set_view",
+   "catia_screenshot"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L121",
+  "title": "Read scale and dimensions from the drawing with a measured geometry pass",
+  "area": "drawing",
+  "severity": "medium",
+  "symptom": "Dimensions transcribed from a raster drawing are off; the title-block scale contradicts the drawing.",
+  "error_patterns": [],
+  "cause": "Title-block scales can be wrong and printed dimensions ambiguous.",
+  "rule": "Extract exact geometry from a vector PDF (circles, arcs with centre and radius, segments with length and angle), compare with the written dimensions, and note title-block scale conflicts. An unwritten dimension is measured, since the drawing is to scale.",
+  "tools": [],
+  "proof": "Applied on dozens of parts; several title-block scale conflicts (e.g. 1:8 stated, 1:10 drawn) were found this way.",
+  "source": "builtin"
+ },
+ {
+  "id": "L122",
+  "title": "Cross-check drawing views (section, top, isometric) before modelling",
+  "area": "drawing",
+  "severity": "medium",
+  "symptom": "Modelled shape contradicts one of the views.",
+  "error_patterns": [],
+  "cause": "Each view carries different information.",
+  "rule": "Reconcile all views; choose the interpretation consistent with all of them and document it.",
+  "tools": [],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L123",
+  "title": "Overlay the profile on the drawing at high resolution",
+  "area": "drawing",
+  "severity": "high",
+  "symptom": "A profile looks right in CATIA but deviates from the drawing.",
+  "error_patterns": [],
+  "cause": "Only an overlay reveals arc side errors and small offsets.",
+  "rule": "Crop the drawing view at high resolution (about 400 dpi), draw the profile on top in a contrasting colour, and check the coloured line follows the black line everywhere.",
+  "tools": [
+   "catia_sketch_profile"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L124",
+  "title": "Expose interface data of each part for later assembly",
+  "area": "process",
+  "severity": "low",
+  "symptom": "Assembly constraints need axes and faces of each part.",
+  "error_patterns": [],
+  "cause": "Assembly designation works with points in the part's own coordinates.",
+  "rule": "Write down for each part axes (point and direction), seating faces (a point inside the face) and bores in its own frame; use catia_list_faces for inside_point and cylinder axes/radii.",
+  "tools": [
+   "catia_list_faces"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ }
+]

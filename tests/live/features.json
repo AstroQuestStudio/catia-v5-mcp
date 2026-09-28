@@ -1,0 +1,278 @@
+[
+ [
+  "catia_close_all",
+  {}
+ ],
+ [
+  "catia_new_part",
+  {}
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "plane": "yz",
+   "name": "Esq_Chanfreins"
+  }
+ ],
+ [
+  "catia_sketch_rectangle",
+  {
+   "x1": 0,
+   "y1": 0,
+   "x2": 40,
+   "y2": 20
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 10,
+   "name": "Pad_Chanfreins"
+  }
+ ],
+ [
+  "catia_chamfer",
+  {
+   "length": 2,
+   "angle": 45,
+   "edge_points": [
+    [
+     5,
+     40,
+     20
+    ]
+   ],
+   "name": "Chanfrein_2x45"
+  }
+ ],
+ [
+  "catia_chamfer",
+  {
+   "length": 1,
+   "length2": 3,
+   "edge_points": [
+    [
+     5,
+     0,
+     20
+    ]
+   ],
+   "name": "Chanfrein_1x3"
+  }
+ ],
+ [
+  "catia_fillet",
+  {
+   "radius": 2,
+   "edge_points": [
+    [
+     5,
+     0,
+     0
+    ],
+    [
+     5,
+     40,
+     0
+    ]
+   ],
+   "name": "Conge_R2_Bas"
+  }
+ ],
+ [
+  "catia_hole",
+  {
+   "point": [
+    10,
+    20,
+    10
+   ],
+   "diameter": 4,
+   "depth": 6,
+   "type": "countersunk",
+   "head_diameter": 8,
+   "name": "Trou_Fraise_D4"
+  }
+ ],
+ [
+  "catia_rect_pattern",
+  {
+   "feature_name": "Trou_Fraise_D4",
+   "dir1": "y",
+   "dir1_count": 3,
+   "dir1_spacing": 10,
+   "dir2": "z",
+   "dir2_count": 1,
+   "dir2_spacing": 0,
+   "name": "Repetition_Trous_3"
+  }
+ ],
+ [
+  "catia_list_faces",
+  {}
+ ],
+ [
+  "catia_new_part",
+  {}
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "plane": "yz",
+   "name": "Esq_Coque"
+  }
+ ],
+ [
+  "catia_sketch_rectangle",
+  {
+   "x1": 0,
+   "y1": 0,
+   "x2": 40,
+   "y2": 20
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 10,
+   "name": "Pad_Coque"
+  }
+ ],
+ [
+  "catia_shell",
+  {
+   "thickness": 2,
+   "open_face_points": [
+    [
+     10,
+     30,
+     5
+    ]
+   ],
+   "name": "Coque_2mm"
+  }
+ ],
+ [
+  "catia_new_part",
+  {}
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "plane": "yz",
+   "name": "Esq_Epaisseur"
+  }
+ ],
+ [
+  "catia_sketch_rectangle",
+  {
+   "x1": 0,
+   "y1": 0,
+   "x2": 40,
+   "y2": 20
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 10,
+   "name": "Pad_Epaisseur"
+  }
+ ],
+ [
+  "catia_thickness",
+  {
+   "offset": 3,
+   "face_points": [
+    [
+     10,
+     30,
+     5
+    ]
+   ],
+   "name": "Epaisseur_3mm"
+  }
+ ],
+ [
+  "catia_new_part",
+  {}
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "plane": "yz",
+   "name": "Esq_Depouille"
+  }
+ ],
+ [
+  "catia_sketch_rectangle",
+  {
+   "x1": 0,
+   "y1": 0,
+   "x2": 40,
+   "y2": 20
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 10,
+   "name": "Pad_Depouille"
+  }
+ ],
+ [
+  "catia_draft",
+  {
+   "angle": 5,
+   "face_points": [
+    [
+     5,
+     40,
+     10
+    ]
+   ],
+   "neutral_face_point": [
+    0,
+    20,
+    10
+   ],
+   "direction": [
+    1,
+    0,
+    0
+   ],
+   "name": "Depouille_5deg"
+  }
+ ],
+ [
+  "catia_mirror",
+  {
+   "plane": "zx",
+   "name": "Symetrie_ZX"
+  }
+ ],
+ [
+  "catia_get_bounding_box",
+  {}
+ ],
+ [
+  "catia_get_tree",
+  {}
+ ]
+]

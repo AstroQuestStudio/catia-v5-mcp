@@ -1,0 +1,211 @@
+{
+ "format": "catia-mcp-scenario/1",
+ "name": "Plate",
+ "kind": "part",
+ "steps": [
+  {
+   "tool": "catia_close_all",
+   "args": {}
+  },
+  {
+   "tool": "catia_new_part",
+   "args": {
+    "name": "Plate"
+   }
+  },
+  {
+   "tool": "catia_rename_body",
+   "args": {
+    "new_name": "Plate_Resultat"
+   }
+  },
+  {
+   "tool": "catia_create_sketch",
+   "args": {
+    "name": "Sk_Plate",
+    "plane": "xy"
+   }
+  },
+  {
+   "tool": "catia_sketch_rectangle",
+   "args": {
+    "x1": -50.0,
+    "y1": -30.0,
+    "x2": 50.0,
+    "y2": 30.0
+   }
+  },
+  {
+   "tool": "catia_close_sketch",
+   "args": {}
+  },
+  {
+   "tool": "catia_pad",
+   "args": {
+    "height": 8.0,
+    "name": "Plate_100x60_T8"
+   }
+  },
+  {
+   "tool": "catia_new_body",
+   "args": {
+    "name": "Body_Holes"
+   }
+  },
+  {
+   "tool": "catia_activate_body",
+   "args": {
+    "body_name": "Body_Holes"
+   }
+  },
+  {
+   "tool": "catia_create_sketch",
+   "args": {
+    "name": "Sk_Holes",
+    "plane": "xy"
+   }
+  },
+  {
+   "tool": "catia_sketch_circle",
+   "args": {
+    "cx": -35.0,
+    "cy": -15.0,
+    "radius": 4.0
+   }
+  },
+  {
+   "tool": "catia_sketch_circle",
+   "args": {
+    "cx": -35.0,
+    "cy": 15.0,
+    "radius": 4.0
+   }
+  },
+  {
+   "tool": "catia_sketch_circle",
+   "args": {
+    "cx": 35.0,
+    "cy": -15.0,
+    "radius": 4.0
+   }
+  },
+  {
+   "tool": "catia_sketch_circle",
+   "args": {
+    "cx": 35.0,
+    "cy": 15.0,
+    "radius": 4.0
+   }
+  },
+  {
+   "tool": "catia_close_sketch",
+   "args": {}
+  },
+  {
+   "tool": "catia_pad",
+   "args": {
+    "height": 16.0,
+    "symmetric": true,
+    "name": "Holes_Cyl_D8"
+   }
+  },
+  {
+   "tool": "catia_boolean_operation",
+   "args": {
+    "operation": "remove",
+    "tool_body": "Body_Holes",
+    "target_body": "Plate_Resultat",
+    "name": "Remove_Holes_D8"
+   }
+  },
+  {
+   "tool": "catia_activate_body",
+   "args": {
+    "body_name": "Plate_Resultat"
+   }
+  },
+  {
+   "tool": "catia_activate_body",
+   "args": {
+    "body_name": "Plate_Resultat"
+   }
+  },
+  {
+   "tool": "catia_update_part",
+   "args": {}
+  },
+  {
+   "tool": "catia_get_inertia",
+   "args": {
+    "body_name": "Plate_Resultat",
+    "density": 7850.0
+   }
+  },
+  {
+   "tool": "catia_get_bounding_box",
+   "args": {}
+  },
+  {
+   "tool": "catia_get_tree",
+   "args": {}
+  },
+  {
+   "tool": "catia_save_document",
+   "args": {
+    "file_path": "C:\\work\\Plate\\Plate.CATPart"
+   }
+  },
+  {
+   "tool": "catia_set_view",
+   "args": {
+    "view": "isometric"
+   }
+  },
+  {
+   "tool": "catia_fit_all",
+   "args": {}
+  },
+  {
+   "tool": "catia_screenshot",
+   "args": {
+    "file_path": "C:\\work\\Plate\\screens\\01_isometric.png"
+   }
+  }
+ ],
+ "checks": {
+  "features": [
+   {
+    "step": 7,
+    "name": "Plate_100x60_T8",
+    "sign": "add"
+   },
+   {
+    "step": 16,
+    "name": "Holes_Cyl_D8",
+    "sign": "add"
+   },
+   {
+    "step": 17,
+    "name": "Remove_Holes_D8",
+    "sign": "remove"
+   }
+  ],
+  "audit": {
+   "step": 23
+  },
+  "volume": {
+   "step": 21,
+   "expected": 46391.504561362024,
+   "tol": 0.02
+  },
+  "bbox": {
+   "step": 22,
+   "expected": [
+    100.0,
+    60.0,
+    8.0
+   ],
+   "tol": 0.5
+  }
+ }
+}

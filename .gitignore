@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+*.log
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+
+# never publish these: proprietary API dumps, captures, local state
+catia_api/
+captures/
+trace/
+*.CATPart
+*.CATProduct
+*.CATDrawing
+*.lock

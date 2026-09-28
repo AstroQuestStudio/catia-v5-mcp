@@ -1,0 +1,263 @@
+[
+ [
+  "catia_close_all",
+  {}
+ ],
+ [
+  "catia_new_part",
+  {}
+ ],
+ [
+  "catia_gsd_create_geoset",
+  {
+   "name": "Set_Filaire"
+  }
+ ],
+ [
+  "catia_gsd_point",
+  {
+   "x": 0,
+   "y": 0,
+   "z": 0,
+   "name": "P_Origine"
+  }
+ ],
+ [
+  "catia_gsd_point",
+  {
+   "x": 0,
+   "y": 0,
+   "z": 100,
+   "name": "P_Haut"
+  }
+ ],
+ [
+  "catia_gsd_line",
+  {
+   "point1": "P_Origine",
+   "point2": "P_Haut",
+   "name": "Axe_Z"
+  }
+ ],
+ [
+  "catia_gsd_plane_offset",
+  {
+   "base_plane": "xy",
+   "offset": 50,
+   "name": "Plan_Z50"
+  }
+ ],
+ [
+  "catia_gsd_plane_3points",
+  {
+   "point1": [
+    0,
+    0,
+    0
+   ],
+   "point2": [
+    10,
+    0,
+    0
+   ],
+   "point3": [
+    0,
+    10,
+    5
+   ],
+   "name": "Plan_3Pts"
+  }
+ ],
+ [
+  "catia_gsd_spline",
+  {
+   "points": [
+    [
+     30,
+     0,
+     0
+    ],
+    [
+     40,
+     0,
+     30
+    ],
+    [
+     35,
+     0,
+     60
+    ],
+    [
+     45,
+     0,
+     100
+    ]
+   ],
+   "name": "Profil_Spline"
+  }
+ ],
+ [
+  "catia_gsd_circle",
+  {
+   "center": [
+    0,
+    0,
+    0
+   ],
+   "support_plane": "xy",
+   "radius": 20,
+   "name": "Cercle_Bas"
+  }
+ ],
+ [
+  "catia_gsd_circle",
+  {
+   "center": [
+    0,
+    0,
+    100
+   ],
+   "support_plane": "xy",
+   "radius": 30,
+   "name": "Cercle_Haut"
+  }
+ ],
+ [
+  "catia_gsd_revolve",
+  {
+   "profile": "Profil_Spline",
+   "axis": "Axe_Z",
+   "angle1": 360,
+   "name": "Surf_Revolution"
+  }
+ ],
+ [
+  "catia_gsd_extrude",
+  {
+   "profile": "Cercle_Bas",
+   "direction": [
+    0,
+    0,
+    1
+   ],
+   "limit1": 40,
+   "name": "Surf_Extrusion"
+  }
+ ],
+ [
+  "catia_gsd_offset_surface",
+  {
+   "surface": "Surf_Extrusion",
+   "offset": 2,
+   "name": "Surf_Decalee"
+  }
+ ],
+ [
+  "catia_gsd_multi_section_surface",
+  {
+   "sections": [
+    "Cercle_Bas",
+    "Cercle_Haut"
+   ],
+   "name": "Surf_MultiSections"
+  }
+ ],
+ [
+  "catia_gsd_sweep",
+  {
+   "profile": "Cercle_Bas",
+   "guide": "Axe_Z",
+   "name": "Surf_Balayage"
+  }
+ ],
+ [
+  "catia_gsd_fill",
+  {
+   "boundaries": [
+    "Cercle_Haut"
+   ],
+   "name": "Surf_Remplissage"
+  }
+ ],
+ [
+  "catia_gsd_blend",
+  {
+   "curve1": "Cercle_Bas",
+   "curve2": "Cercle_Haut",
+   "name": "Surf_Raccord"
+  }
+ ],
+ [
+  "catia_gsd_project",
+  {
+   "element": "Cercle_Haut",
+   "support": "Surf_Revolution",
+   "name": "Proj_Cercle"
+  }
+ ],
+ [
+  "catia_gsd_intersection",
+  {
+   "element1": "Surf_Revolution",
+   "element2": "Plan_Z50",
+   "name": "Inter_Z50"
+  }
+ ],
+ [
+  "catia_gsd_split",
+  {
+   "element": "Surf_Extrusion",
+   "cutter": "Plan_3Pts",
+   "name": "Surf_Coupee"
+  }
+ ],
+ [
+  "catia_gsd_trim",
+  {
+   "element1": "Surf_MultiSections",
+   "element2": "Surf_Remplissage",
+   "name": "Surf_Relimitee"
+  }
+ ],
+ [
+  "catia_gsd_symmetry",
+  {
+   "element": "Surf_Revolution",
+   "plane": "yz",
+   "name": "Surf_Symetrique"
+  }
+ ],
+ [
+  "catia_gsd_join",
+  {
+   "elements": [
+    "Surf_MultiSections",
+    "Surf_Remplissage"
+   ],
+   "name": "Surf_Assemblee"
+  }
+ ],
+ [
+  "catia_gsd_list_elements",
+  {}
+ ],
+ [
+  "catia_gsd_close_surface",
+  {
+   "surface": "Surf_Relimitee",
+   "name": "Solide_Ferme"
+  }
+ ],
+ [
+  "catia_gsd_thick_surface",
+  {
+   "surface": "Surf_Extrusion",
+   "thickness1": 2,
+   "name": "Solide_Epaissi"
+  }
+ ],
+ [
+  "catia_get_tree",
+  {}
+ ]
+]
