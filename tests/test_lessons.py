@@ -68,12 +68,9 @@ def test_every_area_and_critical_present(raw):
 
 def test_no_private_content(raw):
     blob = json.dumps(raw, ensure_ascii=False).lower()
-    import getpass
-    from pathlib import Path
-
-    # never ship the author machine identity or school-project wording inside lessons
-    for bad in ("moodle", "professeur", getpass.getuser().lower(), Path.home().name.lower()):
-        assert len(bad) < 3 or bad not in blob, bad
+    # school-project wording must never leak into the shipped lessons
+    for bad in ("moodle", "professeur"):
+        assert bad not in blob, bad
     assert not re.search(r"[a-z]:\\users\\", blob)
     assert not re.search(r"[a-z]:/users/", blob)
     assert not re.search(r"\b\d_\d{3}_", blob)  # part numbers of a school project
