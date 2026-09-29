@@ -19,14 +19,15 @@ from __future__ import annotations
 
 GROUPS = (
     "document", "sketch", "part", "body", "boolean", "gsd",
-    "assembly", "measure", "export", "drawing", "meta",
+    "assembly", "measure", "export", "drawing", "drafting", "reverse", "meta",
 )
 
 PRESETS: dict[str, frozenset[str]] = {
     "part": frozenset({"document", "sketch", "part", "body", "boolean", "measure", "export", "meta"}),
     "surface": frozenset({"document", "sketch", "gsd", "part", "body", "measure", "export", "meta"}),
     "assembly": frozenset({"document", "assembly", "measure", "export", "meta"}),
-    "review": frozenset({"document", "measure", "export", "drawing", "meta"}),
+    "review": frozenset({"document", "measure", "export", "drawing", "reverse", "meta"}),
+    "drafting": frozenset({"document", "measure", "export", "drawing", "drafting", "meta"}),
     "full": frozenset(GROUPS),
 }
 

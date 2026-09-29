@@ -6,21 +6,21 @@ Every lesson comes from a mistake actually made and proven on a live CATIA V5 R1
 AI agents receive the critical and high ones as server instructions at startup, can query the full
 base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 
-124 built-in lessons.
+152 built-in lessons.
 
 ## Contents
 
-- [COM automation](#com-automation) (13)
-- [Sketcher](#sketcher) (12)
-- [Part Design](#part-design) (26)
+- [COM automation](#com-automation) (16)
+- [Sketcher](#sketcher) (13)
+- [Part Design](#part-design) (28)
 - [Boolean operations and bodies](#boolean-operations-and-bodies) (2)
-- [Topology and references](#topology-and-references) (9)
-- [Measurement](#measurement) (6)
-- [Assembly Design](#assembly-design) (20)
+- [Topology and references](#topology-and-references) (10)
+- [Measurement](#measurement) (7)
+- [Assembly Design](#assembly-design) (24)
 - [Display and screenshots](#display-and-screenshots) (8)
-- [Process and verification](#process-and-verification) (21)
-- [Reading drawings](#reading-drawings) (4)
-- [Performance](#performance) (3)
+- [Process and verification](#process-and-verification) (24)
+- [Reading drawings](#reading-drawings) (15)
+- [Performance](#performance) (5)
 
 ## COM automation
 
@@ -61,7 +61,7 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 
 - **Symptom:** 'La méthode UpdateObject a échoué' right after creating a feature.
 - **Cause:** The feature definition is invalid (wrong axis, wrong enum, wrong reference, wrong direction) and CATIA cannot rebuild it.
-- **Rule:** Do not retry the same call. Delete the failed feature (catia_delete_feature) and re-check the feature-specific lesson (shaft/groove axis, chamfer mode, pocket direction, sketch support).
+- **Rule:** Do not retry the same call. The server removes the broken feature by itself (see the [cleanup] line; if it says it could not, delete it with catia_delete_feature). Then re-check the feature-specific lesson (shaft/groove axis, chamfer mode, pocket direction, sketch support).
 - **Matches errors:** `UpdateObject`, `method UpdateObject failed`
 - **Proof:** Seen on shaft without CenterLine, chamfer with mode 0 and '45', sketch on a face of another body.
 
@@ -113,6 +113,26 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Matches errors:** `La m.thode SaveAs a .chou`, `method SaveAs failed`
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
 
+### L136 - Read sketch geometry inside CATIA: circle centres need GetCenter
+
+**Severity:** high | **Tools:** `catia_describe_model`
+
+- **Symptom:** Line2D.GetEndPoints / Point2D.GetCoordinates fail from Python, and in VBScript Circle2D.CenterPoint.GetCoordinates silently leaves the centre empty.
+- **Cause:** Coordinate outputs are ByRef arrays (zeros or errors from pywin32); the CenterPoint object of a Circle2D or Ellipse2D does not fill them.
+- **Rule:** Run one VBScript per sketch (SystemService.Evaluate): Point2D.GetCoordinates, Line2D.StartPoint/EndPoint.GetCoordinates, Circle2D.GetCenter + Radius + GetParamExtents (0..2pi = full circle, otherwise counter-clockwise arc), Ellipse2D.GetCenter/GetMajorAxis. Sketch.GetAbsoluteAxisData gives the frame (origin, H, V) in mm.
+- **Matches errors:** `GetEndPoints`, `GetCoordinates`
+- **Proof:** Live R19: a sketch with a line, a closed circle, an arc (0.5..2.0 rad) and an ellipse read back exactly through one VBScript; CenterPoint.GetCoordinates returned nothing, GetCenter returned (30, 30).
+
+### L144 - A modal 'files not found or wrong content' dialog blocks every call
+
+**Severity:** high | **Tools:** `catia_list_components`, `catia_add_component`
+
+- **Symptom:** Calls hang; a CATIA dialog 'Open - The following files were not found or do not contain the right information' with buttons Close / Desktop is on screen. Later a COM error such as 'PartNumber failed' appears on a component.
+- **Cause:** An assembly points to a file that is missing, renamed or has an over-long path (Windows 260 characters). CATIA asks instead of failing.
+- **Rule:** The popup watchdog now presses Close (never Desktop) on this dialog. Then find the broken link: list the components one by one, compare file names before/after the build, and fix the cause (missing file, rename, path length). Never leave the dialog open.
+- **Matches errors:** `PartNumber`, `n.ont pas .t. trouv`
+- **Proof:** Live R19: a save that suffixed file names past 260 characters left the dialog open for 20 minutes; after Close and the fix the assembly rebuilt cleanly.
+
 ### L007 - Return numbers from VBScript, never concatenated strings (locale decimal comma)
 
 **Severity:** medium | **Tools:** `catia_clash_analysis`
@@ -152,6 +172,15 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Rule:** Delete dependants first, or delete the owning feature instead of the child geometry.
 - **Matches errors:** `Interdiction de supprimer`, `agr.g.e par une autre`
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L138 - Get the interface name of a COM object from its type info
+
+**Severity:** medium | **Tools:** `catia_describe_model`
+
+- **Symptom:** Shape.Type is missing and the feature kind (Pad, Hole, fillet...) cannot be told from the name, which the user may have changed.
+- **Cause:** Late binding hides the class; the tree names are user text in any UI language.
+- **Rule:** Use obj._oleobj_.GetTypeInfo().GetDocumentation(-1)[0]: it returns the type library name ('Pad', 'Pocket', 'Shaft', 'Hole', 'ConstRadEdgeFillet', 'Chamfer', 'Assemble', 'Remove', 'Mirror', 'RectPattern', 'CircPattern', 'Body', 'Sketch', 'Line2D', 'PartDocument').
+- **Proof:** Live R19 (French UI): every feature of parts built by the scripting kit returned its English interface name whatever its user name.
 
 ## Sketcher
 
@@ -258,6 +287,15 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Cause:** The sketch's H and V directions differ per plane.
 - **Rule:** Proven defaults (GetAbsoluteAxisData): xy H=X V=Y; yz H=Y V=Z; zx H=Z V=X. To impose a frame use Sketch.SetAbsoluteAxisData((ox,oy,oz, hx,hy,hz, vx,vy,vz)).
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L137 - No sketch degrees-of-freedom analysis in Automation: read constraint statuses
+
+**Severity:** medium | **Tools:** `catia_audit_model`
+
+- **Symptom:** An audit wants to flag under- and over-constrained sketches but the Sketch object has no analysis member.
+- **Cause:** The Sketch interface exposes only GeometricElements, Constraints, Factory2D, CenterLine, AbsoluteAxis and edition calls. Contradictory constraints are visible only through Constraint.Status; Constraints.UnUpdatedConstraintsCount also returned 2 on saved sketches that had no constraint, so it is not reliable.
+- **Rule:** Report 'no constraint at all' (Constraints.Count = 0) and constraints whose Status is not 0 (1 = not satisfied); never claim a sketch is iso-constrained. Constraint.GetConstraintElement(n).DisplayName gives the constrained element names; add constraints only while the sketch is open (OpenEdition).
+- **Proof:** Live R19: member list of Sketch dumped from its type info; two Length constraints of 20 and 30 mm on one line gave Status 1 on both, BrokenConstraintsCount 0 and a failing Part.Update; a horizontality constraint on a line was stored as a Parallelism (type 8) with the reference 'Axe horizontal'.
 
 ### L040 - The sketch's absolute axis can serve as revolution axis, only while open for edition
 
@@ -462,6 +500,15 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Rule:** Build the feature in its own body if only a subset must be mirrored.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
 
+### L141 - Edges of a fillet or chamfer can be read back by position, pattern directions cannot
+
+**Severity:** medium | **Tools:** `catia_fillet`, `catia_chamfer`, `catia_describe_model`
+
+- **Symptom:** A fillet or chamfer must be replayed but its edges have no stable name; a rectangular pattern read back gives another direction than the one used to create it.
+- **Cause:** ObjectsToFillet / ElementsToChamfer return references that can be measured, whereas RectPattern.GetFirstDirection returns an in-plane vector of the direction plane, not the displacement direction.
+- **Rule:** Measure each selected edge with Measurable.GetPointsOnCurve in VBScript and keep its middle point as the designation (catia_fillet edge_points). Do not replay patterns from GetFirstDirection/GetRotationAxis; keep count and spacing as data only.
+- **Proof:** Live R19: fillets and a chamfer read back this way were recreated with a volume identical to the original; a pattern created along X read back the direction (0, 1, 0).
+
 ### L019 - Body.HybridShapes and Body.Sketches can list foreign or duplicate items
 
 **Severity:** low | **Tools:** `catia_get_tree`, `catia_list_features`
@@ -506,6 +553,15 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Cause:** The body then holds the removed volume, which a boolean removes from the target body.
 - **Rule:** This is valid; measured volume of such a body goes UP when a pocket is added.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L139 - Part.IsUpToDate is False on a freshly opened multi-body part
+
+**Severity:** low | **Tools:** `catia_audit_model`, `catia_update_part`
+
+- **Symptom:** After opening a saved part with boolean operations, every feature reports IsUpToDate = False although volume and box are correct.
+- **Cause:** The flag means an update is pending, not that the feature failed; the stored geometry is valid.
+- **Rule:** Do not treat a False flag as an error by itself: combine it with a body that measures no solid, or with a failing catia_update_part, before calling a feature broken. Part.IsInactive(feature) reports deactivated features separately.
+- **Proof:** Live R19: a flange made of a pad and three Assemble/Remove operations reported False for all its features right after Documents.Open, with a volume equal to the value measured before saving.
 
 ## Boolean operations and bodies
 
@@ -604,6 +660,16 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Rule:** Pass the raw selection reference as is.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
 
+### L149 - References to faces created by a Mirror cannot be built from their name
+
+**Severity:** medium | **Tools:** `catia_coincidence_constraint`, `catia_contact_constraint`
+
+- **Symptom:** Designating a face by a point succeeds but CreateReferenceFromName fails on faces that come from a mirrored feature.
+- **Cause:** The selection name of a mirrored face is not resolvable as a stand-alone reference.
+- **Rule:** Constrain on the original (non-mirrored) faces, or place the second copy with planes and distances instead of designating its mirrored holes.
+- **Matches errors:** `CreateReferenceFromName`
+- **Proof:** Live R19: holes on the +Y side resolved, the same holes on the -Y side (Mirror) did not.
+
 ### L085 - Measurable.GeometryName codes: 4 cylinder, 6 cone, 7 plane
 
 **Severity:** low | **Tools:** `catia_list_faces`
@@ -670,6 +736,15 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Cause:** The only exact method measures the distance of 6 far planes to every face of the result.
 - **Rule:** Expect about 0.25 s per face (300 faces = 70 s). Prefer catia_get_inertia unless the exact box is needed.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L142 - Inertia matrix needs Inertias.Add in VBScript and must be removed after
+
+**Severity:** medium | **Tools:** `catia_measure_model`, `catia_get_inertia`
+
+- **Symptom:** Inertia moments read from Python are zeros; the mass looks 1000 times too small or large for the material.
+- **Cause:** GetInertiaMatrix/GetPrincipalMoments fill ByRef arrays, and the SPAWorkbench Inertias collection keeps every Inertia you add. Values are in kg.m2 at the part density (1000 kg/m3 when no material is set).
+- **Rule:** In VBScript: Set ine = spa.Inertias.Add(body): read GetInertiaMatrix, GetCOGPosition (metres), GetPrincipalMoments, Mass, then spa.Inertias.Remove spa.Inertias.Count. Compare two parts on moments divided by mass when densities may differ.
+- **Proof:** Live R19: a bracket of 23616 mm3 gave mass 0.0236 kg at density 1000 and a replay of it reproduced the three principal moments exactly.
 
 ## Assembly Design
 
@@ -757,6 +832,33 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Matches errors:** `donn.es import.es ont .t. modifi.es`, `imported data.*modified`
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
 
+### L145 - Save As on a multi-instance part must not rename it again
+
+**Severity:** high | **Tools:** `catia_save_all`
+
+- **Symptom:** After catia_save_all, a part inserted 4 times exists as several files with chained suffixes and the parent assembly cannot find them when reopened.
+- **Cause:** Save As re-points the document: the next instance of the same reference reports the NEW path. Treated as a different document, it was saved again under another name.
+- **Rule:** Track saved documents by identity, and mark the new FullName as handled right after Save As. Only two DIFFERENT documents with the same file name get a part-number suffix. Check with a part inserted several times in the same assembly.
+- **Proof:** Live R19: a washer inserted 4 times produced 3 chained suffixes (path over 260 characters, dialog on reopen); with the fix one file per document and the assembly reopens.
+
+### L147 - Plane coincidence has an orientation: the default can flip a whole sub-assembly by 180 degrees
+
+**Severity:** high | **Tools:** `catia_coincidence_constraint`
+
+- **Symptom:** Constraints are all OK but the component is turned by 180 degrees (mirrored position, hundreds of millimetres away).
+- **Cause:** Coincidence of two planes/axes accepts both normals; the solver keeps the side it finds, not the one you meant.
+- **Rule:** Pass orientation explicitly on plane coincidences (same or opposite) and always verify the final pose against the expected one (pose check). An OK status never proves the intended place.
+- **Proof:** Live R19: a leg on a fuselage pin came out turned by 180 degrees with all constraints OK; orientation opposite gave the expected pose.
+
+### L148 - Offset between two planes: the sign is not reliable, read the pose back
+
+**Severity:** high | **Tools:** `catia_offset_constraint`
+
+- **Symptom:** A piston ends up 2500 mm from its cylinder although the constraint status is OK.
+- **Cause:** The sign of a plane-to-plane distance depends on the normals; the wrong sign is accepted.
+- **Rule:** After every offset, compare the resulting pose with the expected one; if it is opposite, flip the sign. Prefer contact and coincidence on real faces when possible.
+- **Proof:** Live R19: a retract piston displaced by 2520 mm with status OK, detected by the pose check, fixed by the opposite sign.
+
 ### L096 - Components are added with Products.AddNewComponent, not AddNewProduct
 
 **Severity:** medium | **Tools:** `catia_add_new_part`
@@ -828,6 +930,16 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Cause:** Assembly quality has three measurable criteria.
 - **Rule:** Verify catia_update_assembly says all OK, catia_list_constraints shows no default names, and catia_clash_analysis has 0 clash except justified fits.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L146 - Two catalogue parts with the same file name collide in save_all
+
+**Severity:** medium | **Tools:** `catia_save_all`
+
+- **Symptom:** Save As fails for the second of two different parts that share a file name, coming from two sub-assemblies.
+- **Cause:** Both documents map to the same target file in the destination folder.
+- **Rule:** Give distinct documents distinct files: load one of them from a renamed copy before building, or let catia_save_all suffix the second one with its part number.
+- **Matches errors:** `SaveAs`
+- **Proof:** Live R19: the same catalogue file used with two different part numbers in two sub-assemblies made the final save fail until one copy was renamed.
 
 ### L105 - Coincidence on axes for coaxial parts, contact for planar seating
 
@@ -959,6 +1071,15 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Rule:** For each non-trivial profile, superimpose the contour on the drawing view at high resolution and compare views at the drawing's isometric angle before declaring the part done.
 - **Proof:** A wrong-way arc was found by visual review, not by any numeric check.
 
+### L143 - Two agents or scripts driving one CATIA freeze it (and can crash the PC)
+
+**Severity:** critical
+
+- **Symptom:** CATIA stops responding (Responding=False), COM calls hang for minutes, the whole machine may crash.
+- **Cause:** CATIA's COM server is single-threaded and heavy calls (designation, update, clash) from two clients interleave; each one also leaves documents and windows the other does not expect.
+- **Rule:** Run ONE CATIA client at a time. Chain agents sequentially, or set CATIA_MCP_LOCK=1 so processes queue on the cross-process lock. Give every run a time limit (runner --hang-seconds, timeout) and prefer killing a frozen CNEXT and relaunching over waiting.
+- **Proof:** Live R19: two assembly scenarios in parallel froze CATIA (CNEXT not responding for 30+ min); run one after the other the same scenarios finished in 2-6 minutes.
+
 ### L014 - Probe unknown COM APIs in a fresh document each, and close it
 
 **Severity:** high
@@ -1003,6 +1124,16 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Cause:** A timeout does not cancel the underlying COM call.
 - **Rule:** Stop mutating, inspect connection and document state, restore the last verified state, then continue. Default retry budget: one targeted retry when the cause is known and the fix is reversible.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L140 - close_all in the scripting kit closes other people's documents
+
+**Severity:** high | **Tools:** `catia_close_all`, `catia_describe_model`
+
+- **Symptom:** Documents of another agent vanish from CATIA when a kit script starts; reads of your own document fail at random (Item, Name, Update failed, 'part has no body').
+- **Cause:** PartScript and AssemblyScript default to close_all=True (catia_close_all closes every open document, unsaved work included) and any process that closes documents while you read invalidates your COM objects.
+- **Rule:** In a shared CATIA session build with close_all=False, close only the documents you opened, verify the part name after every read (the active document can change between two calls) and retry the whole read when a COM call fails.
+- **Matches errors:** `La m.thode Item a .chou.`, `La m.thode Name a .chou.`
+- **Proof:** Live R19: three documents of another agent were closed by a template run; a later batch of reads needed several retries while other scripts were running in the same CATIA.
 
 ### L020 - Default names are localized; detect defaults by the '.N' suffix
 
@@ -1121,6 +1252,15 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Rule:** Write down for each part axes (point and direction), seating faces (a point inside the face) and bores in its own frame; use catia_list_faces for inside_point and cylinder axes/radii.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
 
+### L152 - Audit tools that read features can invalidate them (false 'not up to date')
+
+**Severity:** low | **Tools:** `catia_audit_model`
+
+- **Symptom:** An audit reports many features as not up to date on files that are fine.
+- **Cause:** Reading some feature properties through COM marks the feature for update.
+- **Rule:** Do not treat 'not up to date' from an inspection tool as an error on its own: re-read the file without the audit and update once before saving.
+- **Proof:** Live R19: 105 'not up to date' findings vanished when the same files were read without the audit.
+
 ## Reading drawings
 
 ### L120 - Verify a part visually at the drawing's viewing angle before declaring it finished
@@ -1141,6 +1281,43 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Rule:** Crop the drawing view at high resolution (about 400 dpi), draw the profile on top in a contrasting colour, and check the coloured line follows the black line everywhere.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
 
+### L125 - A drawing view is empty unless its GenerativeBehavior.Document is set on every view
+
+**Severity:** high | **Tools:** `catia_drawing_add_view`
+
+- **Symptom:** The view exists, no error is raised, the exported PDF shows nothing for it.
+- **Cause:** A generative view only draws once view.GenerativeBehavior.Document points to the 3D source; this is needed on the front view AND on every projected, section and detail view (DefineProjectionView alone is not enough).
+- **Rule:** Set GenerativeBehavior.Document = <CATPart|CATProduct>.Product on each new view, then Update. Check the view size (View.Size through a VBScript) or the PDF, never only the absence of an error.
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L127 - Factory2D of a drawing view fails until the view is activated
+
+**Severity:** high | **Tools:** `catia_drawing_title_block`, `catia_drawing_add_centerlines`
+
+- **Symptom:** CreateLine / CreatePoint / CreateClosedCircle raise a generic E_FAIL on a view that is not the active one.
+- **Cause:** 2D creation works on the active view only (the Main View is active in a new drawing).
+- **Rule:** Call view.Activate() before Factory2D.Create*, and re-activate the Main View afterwards. The frame and title block go in the Background View.
+- **Matches errors:** `CATIAFactory2D`, `Factory2D`
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L128 - Generated drawing edges cannot be dimensioned from Automation: dimension helper geometry
+
+**Severity:** high | **Tools:** `catia_drawing_add_dimension`
+
+- **Symptom:** Selection.Search finds no generated line or circle and DrawingDimensions.Add needs geometry objects.
+- **Cause:** Search on a drawing only returns user 2D geometry, views and texts; the projected edges are not scriptable.
+- **Rule:** Create hidden Factory2D geometry exactly on the model geometry (SetShow(1)) and dimension it; place the line with DrawingDimension.MoveValue(x, y, 0, 0) (the pick points passed to Add do not place it). Take the values from the 3D model and let catia_drawing_check compare them with the PDF.
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L132 - catia_mcp.drawing.extract misses large circles exported as hundreds of chords
+
+**Severity:** high | **Tools:** `catia_drawing_check`
+
+- **Symptom:** A drawing exported by CATIA shows circles of radius 5 mm and more missing from extract() while 3 mm ones are found.
+- **Cause:** CATIA writes a circle as a polyline of short chords; the PDF coordinate jitter flips the sign of the tiny turning angles and the smoothness test rejects the chain.
+- **Rule:** Use catia_mcp.drawing.verify.find_circles / polyline_circles, which accept a chain by its total turning and fit residual. Compare diameters within 0.02 mm and centres within 0.05 mm.
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
 ### L121 - Read scale and dimensions from the drawing with a measured geometry pass
 
 **Severity:** medium
@@ -1158,6 +1335,72 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Cause:** Each view carries different information.
 - **Rule:** Reconcile all views; choose the interpretation consistent with all of them and document it.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L126 - New drawing views start at (0, 0) with scale 1: place and scale them yourself
+
+**Severity:** medium | **Tools:** `catia_drawing_add_view`
+
+- **Symptom:** Projected views pile up at the sheet origin at 1:1 whatever the sheet scale.
+- **Cause:** Sheet.Scale is not inherited by views and CATIA does not lay projected views out from Automation.
+- **Rule:** Set View.Scale, View.x and View.y for every view; View.x/.y is the centre of the projected bounding box and xAxisData/yAxisData the sheet position of the projected model origin.
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L129 - Sheet.GenerateDimensions only creates the dimensions driven by 3D constraints
+
+**Severity:** medium | **Tools:** `catia_drawing_generate_dimensions`, `catia_drawing_add_dimension`
+
+- **Symptom:** After GenerateDimensions the overall sizes and hole positions are missing.
+- **Cause:** Only the constraints of the 3D features (pad lengths, hole diameters) become dimensions, drawn green.
+- **Rule:** Use GenerateDimensions as a base, then add what is missing with catia_drawing_add_dimension; do not repeat a generated dimension (ISO 129-1: dimension a feature once).
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L130 - A new drawing sheet has no readable format until PaperSize is set
+
+**Severity:** medium | **Tools:** `catia_drawing_create`
+
+- **Symptom:** Sheet.PaperSize, Orientation, PaperName, GetPaperWidth raise a generic error on a fresh drawing.
+- **Cause:** The default sheet carries no paper format until one is assigned.
+- **Rule:** Set PaperSize (CatPaperSize: A0=2, A1=3, A2=4, A3=5, A4=6) then Orientation (0 portrait, 1 landscape), then read the size back with GetPaperWidth/GetPaperHeight and compare it with ISO 5457.
+- **Matches errors:** `CATIADrawingSheet.*(PaperSize|Orientation|PaperName|GetPaper)`
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L131 - DrawingView.Size returns zeros from Python: read it through a VBScript
+
+**Severity:** medium | **Tools:** `catia_drawing_add_view`
+
+- **Symptom:** view.Size(...) raises 'Objects for SAFEARRAYS must be sequences' or gives zeros.
+- **Cause:** Size fills a ByRef array, which late binding does not write back (same family as GetCOG).
+- **Rule:** Run a VBScript in CATIA: app.SystemService.Evaluate(code, 0, 'CATMain', [view]) with Dim a(3): v.Size a and return Array(a(0), a(1), a(2), a(3)) = (xmin, xmax, ymin, ymax) on the sheet.
+- **Matches errors:** `Objects for SAFEARRAYS must be sequences`
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L134 - Another client can close the drawing between two calls: re-find it by name and say so
+
+**Severity:** medium | **Tools:** `catia_drawing_info`
+
+- **Symptom:** Sheets.ActiveSheet or ExportData fail with E_UNEXPECTED (-2147418113) on a drawing that was open a second ago.
+- **Cause:** Documents are shared by every client of the CATIA session; catia_close_all from another agent closes them all.
+- **Rule:** Do not rely on ActiveDocument: look the drawing up by name at each call, and when it is gone report that it was closed and rebuild it. Serialise scripts with the cross-process lock (--lock).
+- **Matches errors:** `-2147418113`, `CATIADrawingSheets.*ActiveSheet`
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L133 - CATIA drawing PDFs draw text as strokes: glyphs look like 1.3 mm circles
+
+**Severity:** low | **Tools:** `catia_drawing_check`, `catia_drawing_export_pdf`
+
+- **Symptom:** A circle extraction of a PDF exported by DrawingDocument.ExportData returns small circles at label positions.
+- **Cause:** Letters such as o, 0 and 6 are exported as vector strokes, not as text.
+- **Rule:** Ignore circles below 2 mm in diameter when checking a drawing, and never read the scale or dimension values from the PDF text: pass the scale explicitly and read dimension values from CATIA (GetValue).
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
+
+### L135 - A dimension prefix replaces CATIA's diameter symbol unless the default prefix is kept
+
+**Severity:** low | **Tools:** `catia_drawing_add_dimension`
+
+- **Symptom:** SetPSText(1, '4x ', '') turns 'diameter 8' into '4x 8'.
+- **Cause:** The default main prefix is the placeholder <DIAMETER> (<RADIUS> for radii); overwriting it drops the symbol.
+- **Rule:** Read GetPSText(1, '', '') and write your prefix followed by the default one: '4x <DIAMETER>'.
+- **Proof:** Verified live on CATIA V5 R19 (French UI) while building the drafting tools.
 
 ## Performance
 
@@ -1187,3 +1430,21 @@ base with the `catia_lessons` tool, and add their own with `catia_add_lesson`.
 - **Cause:** Each search updates the selection highlight.
 - **Rule:** Verify with ONE search plus a read, or with the body volume.
 - **Proof:** Verified live on CATIA V5 R19 (French UI).
+
+### L150 - Designation of faces on dense parts is slow; cache it on disk and batch it
+
+**Severity:** medium | **Tools:** `catia_prepare_geometry`, `catia_coincidence_constraint`
+
+- **Symptom:** One dense cylinder costs about 6 s per designated point, and every new process pays it again (a 70-component assembly took 13 minutes).
+- **Cause:** Each designation opens the part and searches its topology; the in-memory cache dies with the process.
+- **Rule:** Use catia_prepare_geometry (one opening per file) and keep the persistent designation cache on (CATIA_MCP_DESIGNATION_CACHE_DISK, default on; keys include file mtime and size, so edited parts are never served stale). Give few points on heavy parts and prefer axes and planar faces to edges.
+- **Proof:** Live R19: the same 70-component assembly went from 780 s to 164 s once the designations were cached from the previous run.
+
+### L151 - Timings on the same machine vary up to 3x: compare medians, not single runs
+
+**Severity:** low
+
+- **Symptom:** A change seems to make a build 3 times slower or faster.
+- **Cause:** Background load, window redraws and CATIA housekeeping add large noise to identical runs.
+- **Rule:** Before blaming or crediting a change, alternate base and new runs several times and compare medians; keep instrumentation (CATIA_MCP_PROFILE) to see where the time goes.
+- **Proof:** Live R19: an apparent regression (15 s to 45 s) disappeared when base and new runs were interleaved.

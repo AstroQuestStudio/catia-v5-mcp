@@ -64,6 +64,27 @@ class MetaTools:
                 },
             },
             {
+                "name": "catia_get_safety_state",
+                "description": (
+                    "Current safety tier of this session: read (inspect only), write (model and save) or "
+                    "dangerous (may also delete features and close documents), and what each tier allows."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "catia_set_safety",
+                "description": (
+                    "LOWER the safety tier of this session (dangerous -> write -> read), for instance before "
+                    "a review or when handing the session to a less trusted step. It can never be raised from "
+                    "a tool call: raising it needs a human to restart the server with CATIA_MCP_SAFETY."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"tier": {"type": "string", "enum": ["read", "write", "dangerous"]}},
+                    "required": ["tier"],
+                },
+            },
+            {
                 "name": "catia_lessons",
                 "description": (
                     "Search the knowledge base of proven CATIA V5 automation pitfalls and rules "
@@ -120,6 +141,10 @@ class MetaTools:
         match tool_name:
             case "catia_batch":
                 return self._batch(arguments)
+            case "catia_get_safety_state":
+                return self._safety_state()
+            case "catia_set_safety":
+                return self._set_safety(arguments)
             case "catia_lessons":
                 return self._lessons(arguments)
             case "catia_add_lesson":
@@ -127,8 +152,32 @@ class MetaTools:
             case _:
                 raise ValueError(f"Unknown meta tool: {tool_name}")
 
+    def _safety_state(self) -> str:
+        return (
+            f"Safety tier: {self.server.safety.tier}. read = inspect, measure, screenshot, open; "
+            "write = also model, constrain, save, export; dangerous = also delete features and close "
+            "documents. Lower it with catia_set_safety; raising it needs a server restart "
+            "(CATIA_MCP_SAFETY)."
+        )
+
+    def _set_safety(self, a: dict[str, Any]) -> str:
+        try:
+            tier = self.server.safety.lower(a["tier"])
+        except PermissionError as e:
+            raise RuntimeError(str(e)) from e
+        return f"Safety tier is now '{tier}'."
+
     def _batch(self, a: dict[str, Any]) -> str:
         schemas = {d["name"]: d["inputSchema"] for d in self.server.tool_definitions()}
+        steps, _ = batch.normalize_steps(a.get("steps"))
+        blocked = self.server.safety.blocked([t for t, _ in steps])
+        if blocked:
+            # Refuse the whole batch up front: never run half of it and then stop at a forbidden step.
+            report = batch.BatchReport(problems=[
+                f"tier '{self.server.safety.tier}' forbids: {', '.join(sorted(set(blocked)))}. "
+                "Nothing was executed."
+            ])
+            return report.text()
         report = batch.run_batch(
             a.get("steps"),
             lambda tool, args: self.server.dispatch(tool, args),

@@ -1,0 +1,453 @@
+[
+ {
+  "tool": "catia_close_all",
+  "args": {}
+ },
+ {
+  "tool": "catia_new_part",
+  "args": {
+   "name": "Flange"
+  }
+ },
+ {
+  "tool": "catia_rename_body",
+  "args": {
+   "new_name": "Flange_Resultat"
+  }
+ },
+ {
+  "tool": "catia_create_sketch",
+  "args": {
+   "name": "Sk_Disc",
+   "plane": "xy"
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": 0.0,
+   "cy": 0.0,
+   "radius": 40.0
+  }
+ },
+ {
+  "tool": "catia_close_sketch",
+  "args": {}
+ },
+ {
+  "tool": "catia_pad",
+  "args": {
+   "height": 10.0,
+   "name": "Disc_D80_T10"
+  }
+ },
+ {
+  "tool": "catia_new_body",
+  "args": {
+   "name": "Body_Hub"
+  }
+ },
+ {
+  "tool": "catia_activate_body",
+  "args": {
+   "body_name": "Body_Hub"
+  }
+ },
+ {
+  "tool": "catia_create_sketch",
+  "args": {
+   "name": "Sk_Hub",
+   "plane": "xy",
+   "offset": 10.0
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": 0.0,
+   "cy": 0.0,
+   "radius": 22.0
+  }
+ },
+ {
+  "tool": "catia_close_sketch",
+  "args": {}
+ },
+ {
+  "tool": "catia_pad",
+  "args": {
+   "height": 12.0,
+   "name": "Hub_D44_H12"
+  }
+ },
+ {
+  "tool": "catia_boolean_operation",
+  "args": {
+   "operation": "assemble",
+   "tool_body": "Body_Hub",
+   "target_body": "Flange_Resultat",
+   "name": "Add_Hub"
+  }
+ },
+ {
+  "tool": "catia_activate_body",
+  "args": {
+   "body_name": "Flange_Resultat"
+  }
+ },
+ {
+  "tool": "catia_new_body",
+  "args": {
+   "name": "Body_Bore"
+  }
+ },
+ {
+  "tool": "catia_activate_body",
+  "args": {
+   "body_name": "Body_Bore"
+  }
+ },
+ {
+  "tool": "catia_create_sketch",
+  "args": {
+   "name": "Sk_Bore",
+   "plane": "xy"
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": 0.0,
+   "cy": 0.0,
+   "radius": 15.0
+  }
+ },
+ {
+  "tool": "catia_close_sketch",
+  "args": {}
+ },
+ {
+  "tool": "catia_pad",
+  "args": {
+   "height": 44.0,
+   "symmetric": true,
+   "name": "Bore_Cyl_D30"
+  }
+ },
+ {
+  "tool": "catia_boolean_operation",
+  "args": {
+   "operation": "remove",
+   "tool_body": "Body_Bore",
+   "target_body": "Flange_Resultat",
+   "name": "Remove_Bore_D30"
+  }
+ },
+ {
+  "tool": "catia_activate_body",
+  "args": {
+   "body_name": "Flange_Resultat"
+  }
+ },
+ {
+  "tool": "catia_new_body",
+  "args": {
+   "name": "Body_Bolt_Holes"
+  }
+ },
+ {
+  "tool": "catia_activate_body",
+  "args": {
+   "body_name": "Body_Bolt_Holes"
+  }
+ },
+ {
+  "tool": "catia_create_sketch",
+  "args": {
+   "name": "Sk_Bolt_Holes",
+   "plane": "xy"
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": 30.0,
+   "cy": 0.0,
+   "radius": 3.0
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": 15.000000000000004,
+   "cy": 25.980762113533157,
+   "radius": 3.0
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": -14.999999999999993,
+   "cy": 25.98076211353316,
+   "radius": 3.0
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": -30.0,
+   "cy": 3.67394039744206e-15,
+   "radius": 3.0
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": -15.000000000000014,
+   "cy": -25.980762113533153,
+   "radius": 3.0
+  }
+ },
+ {
+  "tool": "catia_sketch_circle",
+  "args": {
+   "cx": 15.000000000000004,
+   "cy": -25.980762113533157,
+   "radius": 3.0
+  }
+ },
+ {
+  "tool": "catia_close_sketch",
+  "args": {}
+ },
+ {
+  "tool": "catia_pad",
+  "args": {
+   "height": 20.0,
+   "symmetric": true,
+   "name": "Bolt_Cyl_D6"
+  }
+ },
+ {
+  "tool": "catia_boolean_operation",
+  "args": {
+   "operation": "remove",
+   "tool_body": "Body_Bolt_Holes",
+   "target_body": "Flange_Resultat",
+   "name": "Remove_Bolt_Holes"
+  }
+ },
+ {
+  "tool": "catia_activate_body",
+  "args": {
+   "body_name": "Flange_Resultat"
+  }
+ },
+ {
+  "tool": "catia_drawing_create",
+  "args": {
+   "sheet": "auto",
+   "scale": "auto",
+   "source": "Flange",
+   "views": [
+    "front",
+    "top",
+    "right"
+   ],
+   "view_from": "+Z",
+   "projection": "first_angle"
+  }
+ },
+ {
+  "tool": "catia_drawing_add_view",
+  "args": {
+   "kind": "front",
+   "source": "Flange",
+   "label": "Front",
+   "view_from": "+Z"
+  }
+ },
+ {
+  "tool": "catia_drawing_add_view",
+  "args": {
+   "kind": "top",
+   "label": "Top",
+   "hidden_lines": true
+  }
+ },
+ {
+  "tool": "catia_drawing_add_view",
+  "args": {
+   "kind": "right",
+   "label": "Right"
+  }
+ },
+ {
+  "tool": "catia_drawing_add_centerlines",
+  "args": {
+   "view": "Front",
+   "centres": [
+    {
+     "u": 0,
+     "w": 0,
+     "radius": 15
+    },
+    {
+     "u": 30.0,
+     "w": 0.0,
+     "radius": 3
+    },
+    {
+     "u": 15.0,
+     "w": 25.9808,
+     "radius": 3
+    },
+    {
+     "u": -15.0,
+     "w": 25.9808,
+     "radius": 3
+    },
+    {
+     "u": -30.0,
+     "w": 0.0,
+     "radius": 3
+    },
+    {
+     "u": -15.0,
+     "w": -25.9808,
+     "radius": 3
+    },
+    {
+     "u": 15.0,
+     "w": -25.9808,
+     "radius": 3
+    }
+   ]
+  }
+ },
+ {
+  "tool": "catia_drawing_add_dimension",
+  "args": {
+   "view": "Front",
+   "type": "diameter",
+   "centre": [
+    0,
+    0
+   ],
+   "diameter": 80,
+   "leader_angle_deg": 30
+  }
+ },
+ {
+  "tool": "catia_drawing_add_dimension",
+  "args": {
+   "view": "Front",
+   "type": "diameter",
+   "centre": [
+    0,
+    0
+   ],
+   "diameter": 44,
+   "leader_angle_deg": 150
+  }
+ },
+ {
+  "tool": "catia_drawing_add_dimension",
+  "args": {
+   "view": "Front",
+   "type": "diameter",
+   "centre": [
+    0,
+    0
+   ],
+   "diameter": 30,
+   "leader_angle_deg": 250
+  }
+ },
+ {
+  "tool": "catia_drawing_add_dimension",
+  "args": {
+   "view": "Front",
+   "type": "diameter",
+   "centre": [
+    30,
+    0
+   ],
+   "diameter": 6,
+   "prefix": "6x ",
+   "leader_angle_deg": -30,
+   "offset_mm": 14
+  }
+ },
+ {
+  "tool": "catia_drawing_add_dimension",
+  "args": {
+   "view": "Top",
+   "type": "linear",
+   "from": [
+    22,
+    -22
+   ],
+   "to": [
+    22,
+    0
+   ],
+   "orientation": "vertical",
+   "side": "right",
+   "offset_mm": 25
+  }
+ },
+ {
+  "tool": "catia_drawing_add_dimension",
+  "args": {
+   "view": "Top",
+   "type": "linear",
+   "from": [
+    40,
+    -10
+   ],
+   "to": [
+    40,
+    0
+   ],
+   "orientation": "vertical",
+   "side": "right",
+   "offset_mm": 12
+  }
+ },
+ {
+  "tool": "catia_drawing_title_block",
+  "args": {
+   "fields": {
+    "legal_owner": "Example Corp",
+    "identification_number": "FL-0001",
+    "date_of_issue": "2026-01-01",
+    "sheet_number": "1",
+    "number_of_sheets": "1",
+    "title": "Flange",
+    "approval_person": "Approver",
+    "creator": "Drafter",
+    "document_type": "Part drawing"
+   },
+   "general_tolerance": "m"
+  }
+ },
+ {
+  "tool": "catia_drawing_export_pdf",
+  "args": {
+   "path": "flange_drawing.pdf"
+  }
+ },
+ {
+  "tool": "catia_drawing_check",
+  "args": {
+   "source": "Flange",
+   "fail_on_mismatch": true,
+   "require_circles": 9
+  }
+ },
+ {
+  "tool": "catia_drawing_close",
+  "args": {}
+ }
+]

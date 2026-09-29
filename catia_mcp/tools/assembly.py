@@ -29,9 +29,10 @@ from __future__ import annotations
 import json
 import math
 import os
+from collections import OrderedDict
 from typing import Any
 
-from catia_mcp import geometry
+from catia_mcp import geometry, paths
 from catia_mcp.connection import CATIAConnection
 
 # CatConstraintType (MECMOD type library)
@@ -104,6 +105,14 @@ def _bi_schema(extra: dict[str, Any], required_extra: list[str], what: str) -> d
         "component2": {"type": "string", "description": "Second instance name or path."},
         "element2": _ELEMENT_SCHEMA,
         "name": {"type": "string", "description": f"Explicit name for the {what} in the tree (recommended)."},
+        "defer_update": {
+            "type": "boolean",
+            "description": (
+                "Skip the solve after this constraint (default false). Each solve re-computes EVERY "
+                "constraint, so its cost grows with the assembly: in a long sequence defer all but the "
+                "last, then check with catia_update_assembly. The status is NOT evaluated when deferred."
+            ),
+        },
     }
     props.update(extra)
     return {
@@ -118,6 +127,11 @@ class AssemblyTools:
 
     def __init__(self, connection: CATIAConnection) -> None:
         self.conn = connection
+        # (file, mtime, size, kind, point) -> selection name of the designated face/edge. Designating
+        # geometry re-opens the part file in CATIA (~1 s per element), yet the answer only depends on
+        # the file content and the point: 100 identical bolts cost one search, not 200.
+        self._geom_cache: OrderedDict[tuple, str] = OrderedDict()
+        self._disk_loaded = False
 
     # ------------------------------------------------------------------ schema
     def get_tool_definitions(self) -> list[dict[str, Any]]:
@@ -188,6 +202,35 @@ class AssemblyTools:
                 },
             },
             {
+                "name": "catia_prepare_geometry",
+                "description": (
+                    "Resolve ALL the geometry designations an assembly will need in ONE pass, before "
+                    "adding constraints. Designating a face/axis/edge inside a part re-opens that part in "
+                    "CATIA (a window opens, is searched and closes again, the screen reloads), which is the "
+                    "slowest thing an assembly does; done per constraint it costs ~1 s each and flickers the "
+                    "screen. Here every part is opened ONCE and all its points are searched together; "
+                    "the results are cached, so the constraints that follow are instant. Give one item per "
+                    "(component, element) you will use in constraints. Already-cached items are skipped. "
+                    "A wrong point is reported here, with the distance of the closest element, before any "
+                    "constraint exists. Safe to call repeatedly (idempotent)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "description": "[{'component': 'Bolt.1', 'element': {'face_point': [x,y,z]}}, ...]",
+                            "items": {
+                                "type": "object",
+                                "properties": {"component": {"type": "string"}, "element": _ELEMENT_SCHEMA},
+                                "required": ["component", "element"],
+                            },
+                        },
+                    },
+                    "required": ["items"],
+                },
+            },
+            {
                 "name": "catia_fix_constraint",
                 "description": "Fix a component in space (Fixer). The first/reference component of an assembly must be fixed.",
                 "inputSchema": {
@@ -195,6 +238,14 @@ class AssemblyTools:
                     "properties": {
                         "component": {"type": "string", "description": "Instance name or path."},
                         "name": {"type": "string", "description": "Explicit constraint name (recommended)."},
+                        "defer_update": {
+            "type": "boolean",
+            "description": (
+                "Skip the solve after this constraint (default false). Each solve re-computes EVERY "
+                "constraint, so its cost grows with the assembly: in a long sequence defer all but the "
+                "last, then check with catia_update_assembly. The status is NOT evaluated when deferred."
+            ),
+        },
                     },
                     "required": ["component"],
                 },
@@ -249,8 +300,24 @@ class AssemblyTools:
             },
             {
                 "name": "catia_list_components",
-                "description": "Product tree: every component (recursively), its part number, file and position (origin + axes).",
-                "inputSchema": {"type": "object", "properties": {}},
+                "description": (
+                    "Product tree: every component (recursively), its part number, file and position "
+                    "(origin + axes). With no argument: the whole tree as a JSON list (unchanged). "
+                    "On a big assembly do NOT list everything: pass `path` (one sub-assembly, e.g. "
+                    "'Gearbox.1/Housing.1'), `depth` (levels to descend, 1 = direct children only) and "
+                    "`limit`/`offset` (pages of direct children). Then the answer is an object "
+                    "{total, offset, returned, components}. A listing of more than 5000 components is "
+                    "cut and flagged truncated."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "Sub-assembly to list (default: the root)."},
+                        "depth": {"type": "integer", "minimum": 1, "description": "Levels to descend (default: all)."},
+                        "limit": {"type": "integer", "minimum": 1, "description": "Direct children per page."},
+                        "offset": {"type": "integer", "minimum": 0, "description": "First direct child (default 0)."},
+                    },
+                },
             },
             {
                 "name": "catia_list_constraints",
@@ -313,6 +380,8 @@ class AssemblyTools:
                 return self._add_new(arguments, "Product")
             case "catia_duplicate_component":
                 return self._duplicate(arguments)
+            case "catia_prepare_geometry":
+                return self._prepare_geometry(arguments)
             case "catia_fix_constraint":
                 return self._fix(arguments)
             case "catia_coincidence_constraint":
@@ -328,7 +397,7 @@ class AssemblyTools:
             case "catia_move_component":
                 return self._move(arguments)
             case "catia_list_components":
-                return self._list_components()
+                return self._list_components(arguments)
             case "catia_list_constraints":
                 return self._list_constraints()
             case "catia_save_all":
@@ -350,10 +419,19 @@ class AssemblyTools:
         for name in [p for p in path.replace("\\", "/").split("/") if p]:
             children = node.Products
             found = None
-            for i in range(1, children.Count + 1):
-                if children.Item(i).Name == name:
-                    found = children.Item(i)
-                    break
+            # Direct lookup by name is O(1); scanning every child costs two COM calls per child, which
+            # made each call slower as the assembly grew (0.10 s -> 0.34 s per move at 150 parts).
+            try:
+                found = children.Item(name)
+                if found.Name != name:
+                    found = None
+            except Exception:
+                found = None
+            if found is None:
+                for i in range(1, children.Count + 1):
+                    if children.Item(i).Name == name:
+                        found = children.Item(i)
+                        break
             if found is None:
                 available = [children.Item(i).Name for i in range(1, children.Count + 1)]
                 raise RuntimeError(f"Component '{name}' not found under '{node.Name}'. Available: {available}")
@@ -365,6 +443,152 @@ class AssemblyTools:
 
     def _parent(self, path: str | None) -> Any:
         return self._component(path) if path else self._root()
+
+    _GEOM_CACHE_MAX = 200_000  # a few MB: entries are short strings; LRU keeps the hot ones
+
+    def _disk_cache_on(self) -> bool:
+        return (os.environ.get("CATIA_MCP_DESIGNATION_CACHE", "1") != "0"
+                and paths.env_flag("CATIA_MCP_DESIGNATION_CACHE_DISK", True))
+
+    def _load_disk_cache(self) -> None:
+        """Warm the in-memory cache from the previous sessions (once per process).
+
+        Entries are keyed by file path, mtime and size, so a part edited since is never served
+        stale; a designation is only a selection name inside the part, valid in any assembly.
+        """
+        if self._disk_loaded:
+            return
+        self._disk_loaded = True
+        if not self._disk_cache_on():
+            return
+        try:
+            file = paths.designation_cache_file()
+            if not file.is_file():
+                return
+            lines = file.read_text(encoding="utf-8").splitlines()
+            if len(lines) > 2 * self._GEOM_CACHE_MAX:  # compact an ever-growing journal
+                lines = lines[-self._GEOM_CACHE_MAX:]
+                file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            for line in lines:
+                try:
+                    k, v = json.loads(line)
+                    key = (k[0], k[1], k[2], k[3], tuple(k[4]))
+                except (ValueError, TypeError, IndexError):
+                    continue  # a torn line from a crash: skip it
+                self._geom_cache[key] = v
+            while len(self._geom_cache) > self._GEOM_CACHE_MAX:
+                self._geom_cache.popitem(last=False)
+        except OSError:
+            pass  # an unreadable cache only costs speed
+
+    def _cache_get(self, key: tuple) -> str | None:
+        self._load_disk_cache()
+        hit = self._geom_cache.get(key)
+        if hit is not None:
+            self._geom_cache.move_to_end(key)
+        return hit
+
+    def _cache_put(self, key: tuple, value: str) -> None:
+        self._load_disk_cache()
+        fresh = self._geom_cache.get(key) != value
+        self._geom_cache[key] = value
+        self._geom_cache.move_to_end(key)
+        while len(self._geom_cache) > self._GEOM_CACHE_MAX:
+            self._geom_cache.popitem(last=False)
+        if fresh and self._disk_cache_on():
+            try:
+                with paths.designation_cache_file().open("a", encoding="utf-8") as f:
+                    f.write(json.dumps([list(key), value], ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+
+    def _designation(self, element: dict[str, Any]) -> tuple[str, Any]:
+        kind, point = (
+            ("edge", element["edge_point"]) if "edge_point" in element
+            else ("face", element.get("face_point") or element.get("axis_point"))
+        )
+        if point is None:
+            raise ValueError(f"Element must give face_point, axis_point, edge_point or plane: {element}")
+        return kind, point
+
+    @staticmethod
+    def _cache_key(path: str, kind: str, point: Any) -> tuple:
+        st = os.stat(path)
+        return (os.path.normcase(os.path.abspath(path)), st.st_mtime_ns, st.st_size,
+                kind, tuple(round(float(c), 4) for c in point))
+
+    def _prepare_geometry(self, args: dict[str, Any]) -> str:
+        """Fill the designation cache for many (component, element) pairs, one part opening per file."""
+        groups: dict[str, dict[str, dict[tuple, Any]]] = {}
+        total = cached = skipped = 0
+        for item in args["items"]:
+            element = item["element"]
+            if "plane" in element:
+                continue  # origin planes need no search
+            try:
+                comp = self._component(item["component"])
+            except RuntimeError:
+                # Not inserted yet (a script may add parts after its first constraint): the constraint
+                # itself will designate it later, just without the batching benefit.
+                skipped += 1
+                continue
+            partdoc = comp.ReferenceProduct.Parent
+            path = partdoc.FullName
+            if not path or not os.path.isfile(path):
+                raise RuntimeError(
+                    f"Part '{comp.ReferenceProduct.PartNumber}' has no file yet: save the assembly "
+                    "(catia_save_all) before designating its geometry."
+                )
+            kind, point = self._designation(element)
+            key = self._cache_key(path, kind, point)
+            total += 1
+            if self._cache_get(key) is not None:
+                cached += 1
+                continue
+            groups.setdefault(path, {}).setdefault(kind, {})[key] = point
+        if not groups:
+            return f"Nothing to resolve: {total} designation(s), {cached} already cached."
+
+        app = self.conn.app
+        product_window = app.ActiveWindow
+        previous_alerts = app.DisplayFileAlerts
+        resolved, problems = 0, []
+        for path, kinds in groups.items():
+            count_before = app.Documents.Count
+            doc = None
+            try:
+                app.DisplayFileAlerts = False
+                doc = app.Documents.Open(path)  # ONE opening for every point of this part
+                for kind, requests in kinds.items():
+                    keys = list(requests)
+                    refs, errors = geometry.pick_points_in_part(
+                        app, doc, doc.Part, kind, [requests[k] for k in keys])
+                    for key, ref in zip(keys, refs):
+                        if ref is not None:
+                            self._cache_put(key, ref.DisplayName)
+                            resolved += 1
+                        else:
+                            problems.append(
+                                f"{os.path.basename(path)}: no {kind} passes through {tuple(requests[key])}"
+                                + (f" ({'; '.join(errors)})" if errors else ""))
+            finally:
+                if doc is not None and app.Documents.Count > count_before:
+                    try:
+                        doc.Close()
+                    except Exception:
+                        pass
+                app.DisplayFileAlerts = previous_alerts
+                try:
+                    product_window.Activate()
+                except Exception:
+                    pass
+        msg = (f"Resolved {resolved} designation(s) in {len(groups)} part file(s) "
+               f"({cached} of {total} were already cached)"
+               + (f", {skipped} skipped (component not in the assembly yet)." if skipped else "."))
+        if problems:
+            raise RuntimeError(msg + " UNRESOLVED: " + " | ".join(problems[:10])
+                               + " Give a point lying ON the face (inside it, not on its border) or edge.")
+        return msg
 
     def _geometry_name(self, comp: Any, element: dict[str, Any]) -> str:
         """Selection/BRep name of the element inside the component's part."""
@@ -392,6 +616,17 @@ class AssemblyTools:
                 "(catia_save_all) before designating its geometry."
             )
 
+        cache_key = None
+        if os.environ.get("CATIA_MCP_DESIGNATION_CACHE", "1") != "0":
+            st = os.stat(partdoc.FullName)
+            cache_key = (
+                os.path.normcase(os.path.abspath(partdoc.FullName)), st.st_mtime_ns, st.st_size,
+                kind, tuple(round(float(c), 4) for c in point),
+            )
+            hit = self._cache_get(cache_key)
+            if hit is not None:
+                return f"Axis:({hit})" if "axis_point" in element else hit
+
         app = self.conn.app
         product_window = app.ActiveWindow
         previous_alerts = app.DisplayFileAlerts
@@ -407,6 +642,8 @@ class AssemblyTools:
             # is closed right after (it is not used by any product, so it can).
             doc = app.Documents.Open(partdoc.FullName)
             ref, _ = geometry.pick_in_part(app, doc, doc.Part, kind, point)
+            if cache_key is not None:
+                self._cache_put(cache_key, ref.DisplayName)
             if "axis_point" in element:
                 # A cylindrical FACE gives "wrong geometry type" in a coincidence
                 # (proven live); CATIA's own macros reference its axis as
@@ -430,13 +667,16 @@ class AssemblyTools:
         name = self._geometry_name(comp, element)
         return self._root().CreateReferenceFromName(f"{self._instance_path(path)}/!{name}")
 
-    def _finish_constraint(self, cst: Any, name: str | None, label: str) -> str:
+    def _finish_constraint(self, cst: Any, name: str | None, label: str, defer: bool = False) -> str:
         root = self._root()
         if name:
             try:
                 cst.Name = name
             except Exception:
                 pass
+        if defer:
+            return (f"{label}: constraint '{cst.Name}' created; solve deferred "
+                    "(status not evaluated, call catia_update_assembly).")
         root.Update()
         status = CST_STATUS.get(getattr(cst, "Status", -1), "unknown")
         msg = f"{label}: constraint '{cst.Name}' created, status {status}."
@@ -453,10 +693,11 @@ class AssemblyTools:
         if not os.path.isfile(path):
             raise FileNotFoundError(path)
         parent = self._parent(args.get("parent"))
-        before = {parent.Products.Item(i).Name for i in range(1, parent.Products.Count + 1)}
+        # New components are appended: read only the tail (a full re-listing before and after made each
+        # insertion slower as the assembly grew: 0.2 s -> 1.5 s at 150 parts).
+        count_before = parent.Products.Count
         parent.Products.AddComponentsFromFiles([path], "All")
-        new = [parent.Products.Item(i).Name for i in range(1, parent.Products.Count + 1)
-               if parent.Products.Item(i).Name not in before]
+        new = [parent.Products.Item(i).Name for i in range(count_before + 1, parent.Products.Count + 1)]
         return f"Inserted {os.path.basename(path)} into '{parent.Name}' as instance(s): {new}"
 
     def _add_new(self, args: dict[str, Any], kind: str) -> str:
@@ -484,7 +725,7 @@ class AssemblyTools:
         inst = self._instance_path(path)
         ref = self._root().CreateReferenceFromName(f"{inst}/!{inst}/")
         cst = self._root().Connections("CATIAConstraints").AddMonoEltCst(CST_FIX, ref)
-        return self._finish_constraint(cst, args.get("name"), f"Fix '{path}'")
+        return self._finish_constraint(cst, args.get("name"), f"Fix '{path}'", bool(args.get("defer_update")))
 
     def _bi_constraint(self, args: dict[str, Any], cst_type: int, label: str, value: float | None = None) -> str:
         ref1 = self._reference(args["component1"], args["element1"])
@@ -498,7 +739,7 @@ class AssemblyTools:
         text = f"{label.capitalize()} {args['component1']} / {args['component2']}"
         if value is not None:
             text += f" = {value}"
-        return self._finish_constraint(cst, args.get("name"), text)
+        return self._finish_constraint(cst, args.get("name"), text, bool(args.get("defer_update")))
 
     def _update(self) -> str:
         self._root().Update()
@@ -526,31 +767,59 @@ class AssemblyTools:
         comp.Position.SetComponents(m)
         return f"'{args['component']}' now at origin {[round(v, 3) for v in m[9:12]]}"
 
-    def _list_components(self) -> str:
-        def walk(node: Any, path: str) -> list[dict[str, Any]]:
+    _LIST_CAP = 5000
+
+    def _list_components(self, args: dict[str, Any] | None = None) -> str:
+        args = args or {}
+        path, depth = args.get("path"), args.get("depth")
+        limit, offset = args.get("limit"), int(args.get("offset") or 0)
+        paged = limit is not None or offset or depth is not None or path
+        visited = [0]
+
+        def describe(comp: Any, p: str, depth_left: int | None) -> dict[str, Any]:
+            visited[0] += 1
+            m = self._position(comp)
+            try:
+                file = comp.ReferenceProduct.Parent.FullName
+            except Exception:
+                file = None
+            item: dict[str, Any] = {
+                "path": p, "part_number": comp.PartNumber, "file": file,
+                "origin": [round(v, 3) for v in m[9:12]],
+                "axes": [[round(v, 4) for v in m[k:k + 3]] for k in (0, 3, 6)],
+            }
+            n_children = comp.Products.Count
+            if n_children:
+                if depth_left is not None and depth_left <= 1:
+                    item["children_count"] = n_children  # below the requested depth: counted, not listed
+                else:
+                    item["children"] = walk(comp, p, None if depth_left is None else depth_left - 1)
+            return item
+
+        def walk(node: Any, prefix: str, depth_left: int | None, lo: int = 0, hi: int | None = None) -> list:
             out = []
-            for i in range(1, node.Products.Count + 1):
+            count = node.Products.Count
+            for i in range(1 + lo, (count if hi is None else min(count, hi)) + 1):
+                if visited[0] >= self._LIST_CAP:
+                    break
                 comp = node.Products.Item(i)
-                p = f"{path}/{comp.Name}" if path else comp.Name
-                m = self._position(comp)
-                try:
-                    file = comp.ReferenceProduct.Parent.FullName
-                except Exception:
-                    file = None
-                item = {
-                    "path": p, "part_number": comp.PartNumber, "file": file,
-                    "origin": [round(v, 3) for v in m[9:12]],
-                    "axes": [[round(v, 4) for v in m[k:k + 3]] for k in (0, 3, 6)],
-                }
-                children = walk(comp, p) if comp.Products.Count else []
-                if children:
-                    item["children"] = children
-                out.append(item)
+                out.append(describe(comp, f"{prefix}/{comp.Name}" if prefix else comp.Name, depth_left))
             return out
 
-        comps = walk(self._root(), "")
-        if not comps:
-            return "No components in the active assembly."
+        start = self._component(path) if path else self._root()
+        prefix = path.replace("\\", "/").strip("/") if path else ""
+        total = start.Products.Count
+        hi = None if limit is None else offset + int(limit)
+        comps = walk(start, prefix, depth, offset, hi)
+        truncated = visited[0] >= self._LIST_CAP
+        if not comps and not total:
+            return "No components in the active assembly." if not path else f"'{path}' has no components."
+        if paged or truncated:
+            out: dict[str, Any] = {"total": total, "offset": offset, "returned": len(comps), "components": comps}
+            if truncated:
+                out["truncated"] = True
+                out["note"] = f"Listing stopped at {self._LIST_CAP} components: use path/depth/limit/offset."
+            return json.dumps(out, indent=1, ensure_ascii=False)
         return json.dumps(comps, indent=1, ensure_ascii=False)
 
     def _constraint_summary(self) -> str:
@@ -659,6 +928,24 @@ class AssemblyTools:
             done["tree"] = f"layout unchanged ({str(e)[:60]})"
         return "Hidden for presentation: " + ", ".join(f"{v} {k}" for k, v in done.items())
 
+    @staticmethod
+    def _unique_target(target: str, used: dict[str, str], owner: str, tag: str) -> str:
+        """Target file for a document, never one already given to ANOTHER document in this save.
+
+        Two different parts may share a file name (same catalogue file from two sub-assemblies with
+        different part numbers): saving both into one folder would make the second Save As fail.
+        The second one gets the part number as a suffix; links are re-pointed by CATIA itself.
+        """
+        stem, ext = os.path.splitext(target)
+        candidate = target
+        n = 0
+        while used.get(os.path.normcase(candidate), owner) != owner:
+            n += 1
+            safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(tag)) or "doc"
+            candidate = f"{stem}_{safe}{'' if n == 1 else f'_{n}'}{ext}"
+        used[os.path.normcase(candidate)] = owner
+        return candidate
+
     def _save_all(self, args: dict[str, Any]) -> str:
         """Save every document of the assembly INTO `folder` (Save As), children
         first, then the root product.
@@ -677,6 +964,7 @@ class AssemblyTools:
         root_doc = root.Parent
         saved: list[str] = []
         seen: set[str] = set()
+        used_targets: dict[str, str] = {}
 
         def target_for(doc: Any, ref: Any) -> str:
             has_file = bool(doc.FullName) and os.path.isfile(doc.FullName)
@@ -695,12 +983,16 @@ class AssemblyTools:
                 seen.add(key)
                 if ref.Products.Count:
                     walk(ref)
-                target = target_for(doc, ref)
+                target = self._unique_target(target_for(doc, ref), used_targets, key, ref.PartNumber)
                 if os.path.normcase(doc.FullName or "") == os.path.normcase(target):
                     doc.Save()
                 else:
                     check_free(doc, target)
                     save_as(doc, target)
+                # Save As re-points the document: the next instance of the same reference now
+                # reports the NEW path, which must count as already handled (else it would be taken
+                # for another document and renamed again with a suffix).
+                seen.add(doc.FullName or doc.Name)
                 saved.append(target)
 
         # A target file already loaded as ANOTHER document makes SaveAs fail

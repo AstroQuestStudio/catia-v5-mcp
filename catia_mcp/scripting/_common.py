@@ -27,8 +27,19 @@ _BARE_TYPES = {
 _NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]*$")
 
 
-def check_name(name: Any, what: str, used: Iterable[str] | None = None) -> str:
-    """An explicit, non-default, unique name (CATIA trees are read by humans and audited)."""
+# Words that are also CATIA feature types but are perfectly good names for a whole PART
+# ('Shaft', 'Shell'): allowed for a deliverable, refused for a feature.
+_PART_NOUNS = {"shaft", "arbre", "shell"}
+
+
+def check_name(name: Any, what: str, used: Iterable[str] | None = None, *, deliverable: bool = False) -> str:
+    """An explicit, non-default, unique name (CATIA trees are read by humans and audited).
+
+    ``deliverable=True`` is for the name of a whole part or assembly (its file name): mechanical
+    nouns that are also feature types ('Shaft', 'Shell') are legitimate part names there, whereas for
+    a feature they say nothing about its role. Feature words like 'Pad' and placeholders like 'Part'
+    or 'Test' stay refused.
+    """
     if not isinstance(name, str) or not name.strip():
         raise ScriptError(f"{what}: a non-empty explicit name is required (got {name!r}).")
     if not _NAME_RE.match(name):
@@ -43,7 +54,7 @@ def check_name(name: Any, what: str, used: Iterable[str] | None = None) -> str:
             "Give it a meaningful name such as 'Base_L120' or 'Bore_D25'."
         )
     stem = re.sub(r"[\s_\-.]*\d*$", "", name).lower()
-    if stem in _BARE_TYPES:
+    if stem in (_BARE_TYPES - _PART_NOUNS if deliverable else _BARE_TYPES):
         raise ScriptError(
             f"{what}: {name!r} says nothing about the role of the object. "
             "Use '<Role>_<key dimension>' (e.g. 'Slot_W8', 'Boss_D40')."

@@ -16,7 +16,10 @@ _project_meta/CATIA_COM_PITFALLS.md §4-§6):
 
 from __future__ import annotations
 
+import logging
+import os
 import re
+import time
 from typing import Any
 
 # CATScriptLanguage.CATVBScriptLanguage
@@ -147,42 +150,43 @@ Function CATMain(doc, container, kind, pts, tol)
   sel.Add container
   sel.Search "Topology." & kind & ",sel"
   Dim n: n = sel.Count
-  Dim refs(): ReDim refs(n)
+  ' Lazy scan, newest candidates first: a reference is resolved (2 COM calls) and measured only when
+  ' the scan reaches it, and the scan stops as soon as every point has a hit. The previous version
+  ' resolved ALL candidates before measuring any (hundreds on a dense part) although the target is
+  ' usually one of the last features.
   Dim i, r, dn, d
-  For i = 1 To n
-    Set refs(i) = Nothing
-    On Error Resume Next
-    Set r = sel.Item(i).Reference
-    If Err.Number = 0 Then
-      dn = r.DisplayName
-      ' Skip sketch wires and wireframe/surface elements (planes...).
-      If InStr(dn, "Wire") = 0 And InStr(dn, "GSM") = 0 Then Set refs(i) = r
-    End If
-    Err.Clear
-    On Error GoTo 0
-  Next
-  sel.Clear
   found = 0
   For i = n To 1 Step -1
-    If Not refs(i) Is Nothing Then
-      For j = 0 To np - 1
-        If best(j) > tol Then
-          On Error Resume Next
-          d = mps(j).GetMinimumDistance(refs(i))
-          If Err.Number = 0 Then
-            If d < best(j) Then
-              best(j) = d
-              Set bestRef(j) = refs(i)
-              If d <= tol Then found = found + 1
+    Set r = Nothing
+    On Error Resume Next
+    Set r = sel.Item(i).Reference
+    If Err.Number <> 0 Then Set r = Nothing
+    Err.Clear
+    On Error GoTo 0
+    If Not r Is Nothing Then
+      dn = r.DisplayName
+      ' Skip sketch wires and wireframe/surface elements (planes...).
+      If InStr(dn, "Wire") = 0 And InStr(dn, "GSM") = 0 Then
+        For j = 0 To np - 1
+          If best(j) > tol Then
+            On Error Resume Next
+            d = mps(j).GetMinimumDistance(r)
+            If Err.Number = 0 Then
+              If d < best(j) Then
+                best(j) = d
+                Set bestRef(j) = r
+                If d <= tol Then found = found + 1
+              End If
             End If
+            Err.Clear
+            On Error GoTo 0
           End If
-          Err.Clear
-          On Error GoTo 0
-        End If
-      Next
-      If found >= np Then Exit For
+        Next
+        If found >= np Then Exit For
+      End If
     End If
   Next
+  sel.Clear
   Dim out(): ReDim out(2 * np - 1)
   For j = 0 To np - 1
     Set out(2 * j) = bestRef(j)
@@ -204,7 +208,12 @@ def pick_many(app: Any, doc: Any, container: Any, kind: str, points: list[Any]) 
     """
     cgm = {"face": "CGMFace", "edge": "CGMEdge", "vertex": "CGMVertex"}[kind]
     flat = [float(c) for p in points for c in p]
+    t0 = time.perf_counter()
     out = list(run_vbs(app, _PICK_VBS, [doc, container, cgm, flat, HIT_TOLERANCE]))
+    if os.environ.get("CATIA_MCP_PROFILE", "").lower() in ("1", "true", "yes", "on"):
+        logging.getLogger("catia_mcp").info(
+            "[perf] designation of %d %s point(s) in '%s': %.2fs", len(points), kind, container.Name,
+            time.perf_counter() - t0)
     result = []
     for j, p in enumerate(points):
         ref, d = out[2 * j], out[2 * j + 1]
@@ -217,6 +226,43 @@ def pick_many(app: Any, doc: Any, container: Any, kind: str, points: list[Any]) 
             )
         result.append((ref, d))
     return result
+
+
+def pick_points_in_part(
+    app: Any, doc: Any, part: Any, kind: str, points: list[Any]
+) -> tuple[list[Any | None], list[str]]:
+    """Resolve MANY points of one part in as few topology searches as possible.
+
+    Returns ([reference or None per point], [error text per body that failed]). Each body of the part
+    is searched once with every point still unresolved (one search serves all of them), so the cost is
+    about one scan per body instead of one scan per point. Never raises for a missing point: the
+    caller decides (a batch of designations must report ALL bad points, not only the first).
+    """
+    cgm = {"face": "CGMFace", "edge": "CGMEdge", "vertex": "CGMVertex"}[kind]
+    found: list[Any | None] = [None] * len(points)
+    errors: list[str] = []
+    bodies = [part.Bodies.Item(i) for i in range(1, part.Bodies.Count + 1)]
+    for body in bodies:
+        todo = [j for j, r in enumerate(found) if r is None]
+        if not todo:
+            break
+        try:
+            if body.Shapes.Count == 0:
+                continue
+            flat = [float(c) for j in todo for c in points[j]]
+            t0 = time.perf_counter()
+            out = list(run_vbs(app, _PICK_VBS, [doc, body, cgm, flat, HIT_TOLERANCE]))
+            if os.environ.get("CATIA_MCP_PROFILE", "").lower() in ("1", "true", "yes", "on"):
+                logging.getLogger("catia_mcp").info(
+                    "[perf] designation of %d %s point(s) in '%s': %.2fs", len(todo), kind, body.Name,
+                    time.perf_counter() - t0)
+            for k, j in enumerate(todo):
+                ref, d = out[2 * k], out[2 * k + 1]
+                if ref is not None and d <= HIT_TOLERANCE:
+                    found[j] = ref
+        except Exception as e:
+            errors.append(f"{body.Name}: {e}")
+    return found, errors
 
 
 def pick(app: Any, doc: Any, container: Any, kind: str, point: Any) -> tuple[Any, float]:

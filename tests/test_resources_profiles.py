@@ -65,3 +65,20 @@ def test_prompts_render_and_validate_arguments():
         resources.render_prompt("nope", {})
     assert resources.render_prompt("audit_model", None)
     assert "(not given)" in resources.render_prompt("large_assembly", {"assembly_name": "Car"})
+
+
+def test_optional_modules_are_skipped_when_absent_or_broken(monkeypatch):
+    import importlib
+
+    from catia_mcp.server import CATIAMCPServer
+
+    real = importlib.import_module
+
+    def fake(name, *a, **k):
+        if name == "catia_mcp.tools.drafting":
+            raise RuntimeError("half-written module")
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(importlib, "import_module", fake)
+    server = CATIAMCPServer()  # must not raise
+    assert "catia_batch" in {d["name"] for d in server.tool_definitions()}

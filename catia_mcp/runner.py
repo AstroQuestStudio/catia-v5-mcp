@@ -71,7 +71,7 @@ def load_scenario(path: str | Path) -> tuple[list[Any], dict[str, Any]]:
 
 def _prepare(raw: Any) -> tuple[list[tuple[str, dict[str, Any], float | None]], list[str]]:
     """(tool, args, timeout) triples. A legacy ``_timeout_s`` inside args is honoured then removed."""
-    steps, problems = batch.normalize_steps(raw)
+    steps, problems = batch.normalize_steps(raw, max_steps=batch.MAX_SCENARIO_STEPS)
     if problems:
         return [], problems
     items = json.loads(raw) if isinstance(raw, str) else raw
@@ -235,6 +235,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="max seconds per step before CATIA is considered hung (default 600)")
     ap.add_argument("--no-kill", action="store_true", help="on a hang, log it but do not kill CATIA")
     ap.add_argument("--lock", action="store_true", help="queue behind other runners (cross-process CATIA lock)")
+    ap.add_argument("--no-prepare", action="store_true",
+                    help="do not add the single catia_prepare_geometry step (one part opening per constraint)")
     ap.add_argument("--log", help="log file (default: the scenario path with a .log extension)")
     return ap
 
@@ -256,6 +258,10 @@ def main(argv: list[str] | None = None, server_factory: Callable[[], Any] | None
         return EXIT_REJECTED
     server = make()
     schemas = {d["name"]: d["inputSchema"] for d in server.tool_definitions()}
+    # Scenarios written by hand or by other tools gain the batched designation too. Not when the
+    # scenario carries built-in checks: they refer to step numbers, which an inserted step would shift.
+    if not checks and not args.no_prepare and "catia_prepare_geometry" in schemas:
+        raw = batch.with_prepared_geometry(raw)
     log_path = args.log or str(Path(args.scenario).with_suffix(".log"))
     summary = run_scenario(
         raw,

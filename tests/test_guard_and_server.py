@@ -101,3 +101,14 @@ def test_batch_dry_run_through_the_server(server):
 
 def test_instructions_are_sent_to_clients(server):
     assert server.server.instructions and len(server.server.instructions) > 100
+
+
+def test_missing_files_dialog_is_dismissed_with_close_never_desktop():
+    text = ["Les fichiers suivants n'ont pas été trouvés ou ne contiennent pas les bonnes informations.",
+            r"C:\proj\Sub_Assembly.CATProduct", "Utiliser la commande Bureau pour retrouver les bons fichiers."]
+    assert guard.button_to_click(text, ["Fermer", "Bureau"]) == 0
+    assert guard.button_to_click(text, ["Bureau", "&Fermer"]) == 1
+    assert guard.button_to_click(["The following files were not found."], ["Desktop", "Close"]) == 1
+    assert guard.button_to_click(text, ["Bureau"]) is None            # no way to dismiss: leave it
+    assert guard.button_to_click(["Enregistrer les modifications ?"], ["Oui", "Non", "Annuler"]) is None
+    assert guard.button_to_click(["Info"], ["OK"]) == 0

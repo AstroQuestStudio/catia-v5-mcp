@@ -1,0 +1,231 @@
+[
+ [
+  "catia_new_part",
+  {
+   "name": "Stepped_Pin_Replay"
+  }
+ ],
+ [
+  "catia_rename_body",
+  {
+   "new_name": "Stepped_Pin_Resultat"
+  }
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "name": "Sk_Turned_Profile",
+   "plane": "xy"
+  }
+ ],
+ [
+  "catia_sketch_profile",
+  {
+   "start": [
+    0.0,
+    0.0
+   ],
+   "segments": [
+    {
+     "type": "line",
+     "to": [
+      0.0,
+      10.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      30.0,
+      10.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      30.0,
+      14.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      60.0,
+      14.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      60.0,
+      10.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      80.0,
+      10.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      80.0,
+      0.0
+     ]
+    },
+    {
+     "type": "line"
+    }
+   ],
+   "closed": true
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_shaft",
+  {
+   "axis": "h",
+   "angle": 360.0,
+   "sketch_name": "Sk_Turned_Profile",
+   "name": "Turned_Body"
+  }
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "name": "Sk_Groove",
+   "plane": "xy"
+  }
+ ],
+ [
+  "catia_sketch_profile",
+  {
+   "start": [
+    40.0,
+    12.0
+   ],
+   "segments": [
+    {
+     "type": "line",
+     "to": [
+      44.0,
+      12.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      44.0,
+      15.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      40.0,
+      15.0
+     ]
+    },
+    {
+     "type": "line"
+    }
+   ],
+   "closed": true
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_groove",
+  {
+   "axis": "h",
+   "angle": 360.0,
+   "sketch_name": "Sk_Groove",
+   "name": "Groove_W4"
+  }
+ ],
+ [
+  "catia_chamfer",
+  {
+   "length": 1.0,
+   "edge_points": [
+    [
+     80.0,
+     -8.775826,
+     -4.794255
+    ]
+   ],
+   "name": "Chamfer_End_1x45"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Stepped_Pin_Resultat"
+  }
+ ],
+ [
+  "catia_update_part",
+  {}
+ ],
+ [
+  "catia_get_inertia",
+  {
+   "body_name": "Stepped_Pin_Resultat",
+   "density": 1000.0
+  }
+ ],
+ [
+  "catia_get_bounding_box",
+  {}
+ ],
+ [
+  "catia_get_tree",
+  {}
+ ],
+ [
+  "catia_save_document",
+  {
+   "file_path": "replay_out/Stepped_Pin_Replay.CATPart"
+  }
+ ],
+ [
+  "catia_set_view",
+  {
+   "view": "isometric"
+  }
+ ],
+ [
+  "catia_fit_all",
+  {}
+ ],
+ [
+  "catia_screenshot",
+  {
+   "file_path": "replay_out/screens/01_isometric.png"
+  }
+ ],
+ [
+  "catia_set_view",
+  {
+   "view": "isometric_back"
+  }
+ ],
+ [
+  "catia_fit_all",
+  {}
+ ],
+ [
+  "catia_screenshot",
+  {
+   "file_path": "replay_out/screens/02_isometric_back.png"
+  }
+ ]
+]

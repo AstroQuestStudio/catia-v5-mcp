@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 import subprocess
 import sys
 import threading
@@ -110,6 +111,29 @@ def is_safe_to_close(button_labels: list[str]) -> bool:
     return len(labels) == 1 and labels[0] in _SAFE_BUTTONS
 
 
+_MISSING_FILES = re.compile(
+    r"n.ont pas .t. trouv|ne contiennent pas les bonnes informations|"
+    r"(were|was) not found|do(es)? not contain the (right|correct)", re.IGNORECASE)
+_DISMISS = {"fermer", "close", "annuler", "cancel"}
+
+
+def button_to_click(texts: list[str], button_labels: list[str]) -> int | None:
+    """Index of the button the watchdog may press, or None (leave the dialog to a human).
+
+    Two cases only, both harmless: a box whose ONLY button is OK/Close, and the "files not found or
+    wrong content" box CATIA raises when an assembly points to a missing file, which offers
+    Close / Desktop: Close just reports and lets the call fail with a clear error, while Desktop
+    would open a file browser and block again. A question (Yes/No, Save?) is never answered."""
+    labels = [b.replace("&", "").strip().lower() for b in button_labels]
+    if is_safe_to_close(button_labels):
+        return 0
+    if _MISSING_FILES.search(" ".join(texts)):
+        for i, lab in enumerate(labels):
+            if lab in _DISMISS:
+                return i
+    return None
+
+
 def _watch(stop: threading.Event, report: Callable[[str], None]) -> None:
     import win32con
     import win32gui
@@ -120,20 +144,22 @@ def _watch(stop: threading.Event, report: Callable[[str], None]) -> None:
             for hwnd in _catia_dialogs():
                 title, texts, buttons = _describe(hwnd)
                 labels = [b[1] for b in buttons]
-                closable = is_safe_to_close(labels)
+                click = button_to_click(texts, labels)
+                closable = click is not None
                 key = (hwnd, title, tuple(texts))
                 if key in seen and not closable:
                     continue
                 seen.add(key)
                 msg = (
                     f"[CATIA POPUP] '{title}': {' / '.join(texts)[:400]}; buttons {labels} -> "
-                    + ("closed automatically (OK)" if closable else "LEFT OPEN (question): needs a human")
+                    + (f"closed automatically ({labels[click]})" if closable
+                       else "LEFT OPEN (question): needs a human")
                 )
                 report(msg)
                 with paths.popup_log().open("a", encoding="utf-8") as f:
                     f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
                 if closable:
-                    win32gui.SendMessage(buttons[0][0], win32con.BM_CLICK, 0, 0)
+                    win32gui.SendMessage(buttons[click][0], win32con.BM_CLICK, 0, 0)
                     time.sleep(0.5)
         except Exception:  # a watchdog must never die or raise
             pass

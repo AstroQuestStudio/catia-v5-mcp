@@ -137,3 +137,49 @@ Keep the clash list short: 0 clashes except justified interference, each one wri
 - `CHECKS: all passed` (poses, constraints, clashes) in the log.
 - Screenshots compared with the assembly drawing (exploded view, section, isometric).
 - Bill of materials: reference, part, quantity as on the drawing; the fixed part and the mounting logic written down.
+
+## 9. Speed and scale (measured live)
+
+Measured on CATIA V5 R19 (French UI), a laptop with 8 cores and 32 GB. Times move by up to 3x between
+identical runs on this class of machine (background load, thermal state): compare medians of several
+runs, interleaved, never a single number. The speed-ups below are 10x or more, far above that noise.
+
+### Where the time goes
+
+`CATIA_MCP_PROFILE=1` (environment of the server or runner) appends, to every call, the split of its time:
+`[perf] catia_fillet: total=21.8s overhead=0.19s (snapshot_before=... execute=21.65s ...)`.
+
+- The server's own bookkeeping (tree snapshot, volume check, renaming) costs 0.1 to 0.3 s per feature: negligible.
+- **Designating geometry** (`face_point`, `axis_point`, `edge_point`) is the expensive part. Every designation
+  opens the part in CATIA, searches its topology, closes it and reactivates the assembly window. That is the
+  window that flickers, ~1 s per element and 20-30 s for two EDGES of a dense part (about 50 ms per edge,
+  intrinsic to CATIA). Prefer faces and axes; give several edges in ONE call (one search serves all points).
+- Each constraint solve re-computes every constraint, so its cost grows with the assembly.
+
+### What removes it
+
+| Measure | Effect |
+|---|---|
+| `catia_prepare_geometry` (the kit and the runner add it for you) | Every part is opened ONCE and all its points are searched together. A 58-constraint wheel: 92 designations became 53 in 7 openings. |
+| Designation cache (file + modification time + point) | 100 identical bolts cost one search, not 200. Bounded LRU (200 000 entries). `CATIA_MCP_DESIGNATION_CACHE=0` disables it. |
+| `defer_update` on constraints (`AssemblyScript(..., defer_updates=True)`) | No solve after each constraint; `finish()` solves and checks all once. Cost per constraint stays flat. |
+| Direct lookup of components by name | Adding and moving a component no longer slows down as the assembly grows (0.2 s to 1.5 s per insertion at 150 parts before, 0.01 s flat after). |
+
+Results: contact constraint 2.48 s to 0.16 s on average (x15); 30-component, 58-constraint wheel 293 s to 47 s;
+150 constraints 249 s to 36 s; 300 instances with 301 constraints (906 steps) in 81 s, zero errors.
+
+### Very large assemblies (thousands of parts and more)
+
+The MCP layer is linear: validating 100 000 steps takes about 4 s, listings are paginated, the cache is bounded.
+What limits a vehicle or an aircraft is CATIA itself (memory, licence, load time), so structure the work:
+
+1. One sub-product per system; build, update, check constraints and run the clash analysis on it ALONE, save,
+   then insert it into its parent. Save after every sub-assembly so an interruption loses at most one.
+2. Send steps in chunks of 25-500 in `catia_batch` (or scenario files of any size with `catia-mcp-run`), with
+   `stop_on_error`, keeping the chunk boundaries in a progress file so a run can resume.
+3. Never list the whole tree: `catia_list_components` takes `path`, `depth`, `limit`, `offset`
+   (`depth=1, limit=50` = one page of direct children). A listing above 5000 components is cut and flagged.
+4. Clash analysis per sub-assembly, then between neighbouring sub-assemblies only.
+5. Start the server with `CATIA_MCP_TOOLSETS=assembly` to keep the tool list small.
+6. Use `defer_updates=True` for the final run of a stable assembly, `False` while debugging a new one
+   (a wrong constraint is then reported at the step that made it).

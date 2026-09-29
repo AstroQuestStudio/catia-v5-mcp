@@ -1,0 +1,309 @@
+[
+ [
+  "catia_new_part",
+  {
+   "name": "Flange_Replay"
+  }
+ ],
+ [
+  "catia_rename_body",
+  {
+   "new_name": "Flange_Resultat"
+  }
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "name": "Sk_Disc",
+   "plane": "xy"
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": 0.0,
+   "cy": 0.0,
+   "radius": 40.0
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 10.0,
+   "sketch_name": "Sk_Disc",
+   "name": "Disc_D80_T10"
+  }
+ ],
+ [
+  "catia_new_body",
+  {
+   "name": "Body_Hub"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Body_Hub"
+  }
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "name": "Sk_Hub",
+   "plane": "xy",
+   "offset": 10.0
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": 0.0,
+   "cy": 0.0,
+   "radius": 22.0
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 12.0,
+   "sketch_name": "Sk_Hub",
+   "name": "Hub_D44_H12"
+  }
+ ],
+ [
+  "catia_boolean_operation",
+  {
+   "operation": "assemble",
+   "tool_body": "Body_Hub",
+   "target_body": "Flange_Resultat",
+   "name": "Add_Hub"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Flange_Resultat"
+  }
+ ],
+ [
+  "catia_new_body",
+  {
+   "name": "Body_Bore"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Body_Bore"
+  }
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "name": "Sk_Bore",
+   "plane": "xy"
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": 0.0,
+   "cy": 0.0,
+   "radius": 15.0
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 44.0,
+   "symmetric": true,
+   "sketch_name": "Sk_Bore",
+   "name": "Bore_Cyl_D30"
+  }
+ ],
+ [
+  "catia_boolean_operation",
+  {
+   "operation": "remove",
+   "tool_body": "Body_Bore",
+   "target_body": "Flange_Resultat",
+   "name": "Remove_Bore_D30"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Flange_Resultat"
+  }
+ ],
+ [
+  "catia_new_body",
+  {
+   "name": "Body_Bolt_Holes"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Body_Bolt_Holes"
+  }
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "name": "Sk_Bolt_Holes",
+   "plane": "xy"
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": 30.0,
+   "cy": 0.0,
+   "radius": 3.0
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": 15.0,
+   "cy": 25.980762,
+   "radius": 3.0
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": -15.0,
+   "cy": 25.980762,
+   "radius": 3.0
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": -30.0,
+   "cy": 0.0,
+   "radius": 3.0
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": -15.0,
+   "cy": -25.980762,
+   "radius": 3.0
+  }
+ ],
+ [
+  "catia_sketch_circle",
+  {
+   "cx": 15.0,
+   "cy": -25.980762,
+   "radius": 3.0
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 20.0,
+   "symmetric": true,
+   "sketch_name": "Sk_Bolt_Holes",
+   "name": "Bolt_Cyl_D6"
+  }
+ ],
+ [
+  "catia_boolean_operation",
+  {
+   "operation": "remove",
+   "tool_body": "Body_Bolt_Holes",
+   "target_body": "Flange_Resultat",
+   "name": "Remove_Bolt_Holes"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Flange_Resultat"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Flange_Resultat"
+  }
+ ],
+ [
+  "catia_update_part",
+  {}
+ ],
+ [
+  "catia_get_inertia",
+  {
+   "body_name": "Flange_Resultat",
+   "density": 1000.0
+  }
+ ],
+ [
+  "catia_get_bounding_box",
+  {}
+ ],
+ [
+  "catia_get_tree",
+  {}
+ ],
+ [
+  "catia_save_document",
+  {
+   "file_path": "replay_out/Flange_Replay.CATPart"
+  }
+ ],
+ [
+  "catia_set_view",
+  {
+   "view": "isometric"
+  }
+ ],
+ [
+  "catia_fit_all",
+  {}
+ ],
+ [
+  "catia_screenshot",
+  {
+   "file_path": "replay_out/screens/01_isometric.png"
+  }
+ ],
+ [
+  "catia_set_view",
+  {
+   "view": "isometric_back"
+  }
+ ],
+ [
+  "catia_fit_all",
+  {}
+ ],
+ [
+  "catia_screenshot",
+  {
+   "file_path": "replay_out/screens/02_isometric_back.png"
+  }
+ ]
+]

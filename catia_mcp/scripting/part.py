@@ -326,7 +326,7 @@ class PartScript(ScriptBase):
 
     def __init__(self, name: str, folder: str | Path, result: str | None = None,
                  density: float | None = 7850.0, close_all: bool = True) -> None:
-        super().__init__(check_name(name, "part name"), folder)
+        super().__init__(check_name(name, "part name", deliverable=True), folder)
         self.result = check_name(result or f"{name}_Resultat", "result body name")
         self.density = num(density, "density (kg/m3)", positive=True, limit=None) if density is not None else None
         self._names: set[str] = {self.result}

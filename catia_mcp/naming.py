@@ -174,3 +174,39 @@ def after_creation(conn: Any, before: list[tuple[str, Any]] | None, new_name: st
         except Exception as e:
             notes.append(f"[tidy] could not tidy sketch: {e}")
     return "\n".join(notes)
+
+
+def rollback(conn: Any, before: list[tuple[str, Any]] | None) -> str:
+    """Remove what a FAILED creation tool left behind, so a failed call has no side effect.
+
+    CATIA keeps a rejected feature in the tree (seen live: a pad on an open profile left
+    'Extrusion.2' behind). Everything that appeared since ``before`` is deleted, newest first:
+    features and shapes always, sketches only when they still carry a default name (an
+    internal sketch such as a hole's; the user's own sketch existed before the call).
+    Returns a note, or '' when there was nothing to clean or the tree could not be read.
+    """
+    after = snapshot(conn)
+    if before is None or after is None:
+        return ""
+    known = {path for path, _ in before}
+    leftovers = [(p, o) for p, o in after if p not in known]
+    removed, failed = [], []
+    for path, obj in reversed(leftovers):
+        try:
+            name = obj.Name
+            if path.startswith("sk:") and not is_default_name(name):
+                continue
+            sel = conn.hso
+            sel.Clear()
+            sel.Add(obj)
+            sel.Delete()
+            sel.Clear()
+            removed.append(name)
+        except Exception as e:
+            failed.append(f"{path.split('/', 1)[-1]} ({str(e)[:60]})")
+    notes = []
+    if removed:
+        notes.append(f"[cleanup] removed what the failed call left in the tree: {', '.join(removed)}.")
+    if failed:
+        notes.append(f"[cleanup] could not remove: {'; '.join(failed)}. Delete it with catia_delete_feature.")
+    return "\n".join(notes)

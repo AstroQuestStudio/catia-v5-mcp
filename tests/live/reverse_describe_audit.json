@@ -1,0 +1,6 @@
+[
+ ["catia_get_active_document_info", {}],
+ ["catia_measure_model", {}],
+ ["catia_describe_model", {"include_spec": false, "include_script": false, "measure": false}],
+ ["catia_audit_model", {"min_severity": "info"}]
+]

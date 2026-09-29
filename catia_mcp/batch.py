@@ -15,7 +15,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-MAX_STEPS = 500
+MAX_STEPS = 500            # one catia_batch tool call (keeps the model's answer small)
+MAX_SCENARIO_STEPS = 5_000_000  # a scenario FILE run by catia-mcp-run: chunking is the runner's job
 NOT_BATCHABLE = {"catia_batch"}
 
 
@@ -74,7 +75,9 @@ class BatchReport:
         return "\n".join(lines)
 
 
-def normalize_steps(raw: Any) -> tuple[list[tuple[str, dict[str, Any]]], list[str]]:
+def normalize_steps(
+    raw: Any, max_steps: int = MAX_STEPS
+) -> tuple[list[tuple[str, dict[str, Any]]], list[str]]:
     """Accept ``[{"tool": ..., "args": {...}}]`` or ``[["tool", {...}], ...]``."""
     problems: list[str] = []
     steps: list[tuple[str, dict[str, Any]]] = []
@@ -85,8 +88,8 @@ def normalize_steps(raw: Any) -> tuple[list[tuple[str, dict[str, Any]]], list[st
             return [], [f"'steps' is a string that is not valid JSON: {e}"]
     if not isinstance(raw, list) or not raw:
         return [], ["'steps' must be a non-empty list"]
-    if len(raw) > MAX_STEPS:
-        return [], [f"too many steps ({len(raw)} > {MAX_STEPS}); split the batch"]
+    if len(raw) > max_steps:
+        return [], [f"too many steps ({len(raw)} > {max_steps}); split the batch"]
     for i, item in enumerate(raw, 1):
         if isinstance(item, dict) and "tool" in item:
             tool, args = item["tool"], item.get("args") or {}
@@ -104,12 +107,14 @@ def normalize_steps(raw: Any) -> tuple[list[tuple[str, dict[str, Any]]], list[st
     return steps, problems
 
 
-def validate_step(schema: dict[str, Any], args: dict[str, Any]) -> list[str]:
-    """Human-readable schema violations for one call (empty list = valid)."""
+def validate_step(schema: dict[str, Any], args: dict[str, Any], validator: Any = None) -> list[str]:
+    """Human-readable schema violations for one call (empty list = valid). Pass a prebuilt
+    ``validator`` when validating many steps of the same tool."""
     from jsonschema import Draft202012Validator
 
+    validator = validator or Draft202012Validator(schema)
     out = []
-    for err in sorted(Draft202012Validator(schema).iter_errors(args), key=lambda e: list(e.path)):
+    for err in sorted(validator.iter_errors(args), key=lambda e: list(e.path)):
         where = ".".join(str(p) for p in err.path) or "(arguments)"
         out.append(f"{where}: {err.message}"[:300])
     # jsonschema ignores unknown keys unless additionalProperties is false: flag typos ourselves.
@@ -130,7 +135,10 @@ def validate_step(schema: dict[str, Any], args: dict[str, Any]) -> list[str]:
 def validate_batch(
     steps: list[tuple[str, dict[str, Any]]], schemas: dict[str, dict[str, Any]]
 ) -> list[str]:
+    from jsonschema import Draft202012Validator
+
     problems: list[str] = []
+    validators: dict[str, Any] = {}
     for i, (tool, args) in enumerate(steps, 1):
         if tool in NOT_BATCHABLE:
             problems.append(f"step {i}: '{tool}' cannot be nested in a batch")
@@ -141,7 +149,9 @@ def validate_batch(
             hint = f" (did you mean {', '.join(close)}?)" if close else ""
             problems.append(f"step {i}: unknown tool '{tool}'{hint}")
             continue
-        problems += [f"step {i} {tool}: {p}" for p in validate_step(schema, args)]
+        if tool not in validators:
+            validators[tool] = Draft202012Validator(schema)
+        problems += [f"step {i} {tool}: {p}" for p in validate_step(schema, args, validators[tool])]
     return problems
 
 
@@ -183,3 +193,40 @@ def run_batch(
             report.stopped_early = i < len(steps)
             break
     return report
+
+
+_CONSTRAINT_TOOLS = (
+    "catia_coincidence_constraint", "catia_contact_constraint",
+    "catia_offset_constraint", "catia_angle_constraint",
+)
+
+
+def with_prepared_geometry(raw: Any) -> Any:
+    """Insert ONE ``catia_prepare_geometry`` step after the last ``catia_add_component``.
+
+    It resolves every face/axis/edge the constraints designate with a single opening per part file
+    instead of one per constraint (a window opens, is searched and closes, the screen reloads: ~1 s
+    each). Returns ``raw`` untouched when there is nothing to prepare, when a prepare step already
+    exists, or when the scenario is malformed (the normal validation then explains why).
+    """
+    steps, problems = normalize_steps(raw, max_steps=MAX_SCENARIO_STEPS)
+    if problems or any(t == "catia_prepare_geometry" for t, _ in steps):
+        return raw
+    items, seen, last_add = [], set(), -1
+    for i, (tool, args) in enumerate(steps):
+        if tool == "catia_add_component":
+            last_add = i
+        if tool in _CONSTRAINT_TOOLS:
+            for comp, elem in (("component1", "element1"), ("component2", "element2")):
+                el = args.get(elem)
+                if not isinstance(el, dict) or not el or "plane" in el or not args.get(comp):
+                    continue
+                key = (args[comp], json.dumps(el, sort_keys=True))
+                if key not in seen:
+                    seen.add(key)
+                    items.append({"component": args[comp], "element": el})
+    if not items or last_add < 0:
+        return raw
+    listed = json.loads(raw) if isinstance(raw, str) else list(raw)
+    listed.insert(last_add + 1, {"tool": "catia_prepare_geometry", "args": {"items": items}})
+    return listed

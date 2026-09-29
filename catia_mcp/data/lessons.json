@@ -28,7 +28,7 @@
    "method UpdateObject failed"
   ],
   "cause": "The feature definition is invalid (wrong axis, wrong enum, wrong reference, wrong direction) and CATIA cannot rebuild it.",
-  "rule": "Do not retry the same call. Delete the failed feature (catia_delete_feature) and re-check the feature-specific lesson (shaft/groove axis, chamfer mode, pocket direction, sketch support).",
+  "rule": "Do not retry the same call. The server removes the broken feature by itself (see the [cleanup] line; if it says it could not, delete it with catia_delete_feature). Then re-check the feature-specific lesson (shaft/groove axis, chamfer mode, pocket direction, sketch support).",
   "tools": [
    "catia_shaft",
    "catia_groove",
@@ -1993,6 +1993,473 @@
    "catia_list_faces"
   ],
   "proof": "Verified live on CATIA V5 R19 (French UI).",
+  "source": "builtin"
+ },
+ {
+  "id": "L125",
+  "title": "A drawing view is empty unless its GenerativeBehavior.Document is set on every view",
+  "area": "drawing",
+  "severity": "high",
+  "symptom": "The view exists, no error is raised, the exported PDF shows nothing for it.",
+  "error_patterns": [],
+  "cause": "A generative view only draws once view.GenerativeBehavior.Document points to the 3D source; this is needed on the front view AND on every projected, section and detail view (DefineProjectionView alone is not enough).",
+  "rule": "Set GenerativeBehavior.Document = <CATPart|CATProduct>.Product on each new view, then Update. Check the view size (View.Size through a VBScript) or the PDF, never only the absence of an error.",
+  "tools": [
+   "catia_drawing_add_view"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L126",
+  "title": "New drawing views start at (0, 0) with scale 1: place and scale them yourself",
+  "area": "drawing",
+  "severity": "medium",
+  "symptom": "Projected views pile up at the sheet origin at 1:1 whatever the sheet scale.",
+  "error_patterns": [],
+  "cause": "Sheet.Scale is not inherited by views and CATIA does not lay projected views out from Automation.",
+  "rule": "Set View.Scale, View.x and View.y for every view; View.x/.y is the centre of the projected bounding box and xAxisData/yAxisData the sheet position of the projected model origin.",
+  "tools": [
+   "catia_drawing_add_view"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L127",
+  "title": "Factory2D of a drawing view fails until the view is activated",
+  "area": "drawing",
+  "severity": "high",
+  "symptom": "CreateLine / CreatePoint / CreateClosedCircle raise a generic E_FAIL on a view that is not the active one.",
+  "error_patterns": [
+   "CATIAFactory2D",
+   "Factory2D"
+  ],
+  "cause": "2D creation works on the active view only (the Main View is active in a new drawing).",
+  "rule": "Call view.Activate() before Factory2D.Create*, and re-activate the Main View afterwards. The frame and title block go in the Background View.",
+  "tools": [
+   "catia_drawing_title_block",
+   "catia_drawing_add_centerlines"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L128",
+  "title": "Generated drawing edges cannot be dimensioned from Automation: dimension helper geometry",
+  "area": "drawing",
+  "severity": "high",
+  "symptom": "Selection.Search finds no generated line or circle and DrawingDimensions.Add needs geometry objects.",
+  "error_patterns": [],
+  "cause": "Search on a drawing only returns user 2D geometry, views and texts; the projected edges are not scriptable.",
+  "rule": "Create hidden Factory2D geometry exactly on the model geometry (SetShow(1)) and dimension it; place the line with DrawingDimension.MoveValue(x, y, 0, 0) (the pick points passed to Add do not place it). Take the values from the 3D model and let catia_drawing_check compare them with the PDF.",
+  "tools": [
+   "catia_drawing_add_dimension"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L129",
+  "title": "Sheet.GenerateDimensions only creates the dimensions driven by 3D constraints",
+  "area": "drawing",
+  "severity": "medium",
+  "symptom": "After GenerateDimensions the overall sizes and hole positions are missing.",
+  "error_patterns": [],
+  "cause": "Only the constraints of the 3D features (pad lengths, hole diameters) become dimensions, drawn green.",
+  "rule": "Use GenerateDimensions as a base, then add what is missing with catia_drawing_add_dimension; do not repeat a generated dimension (ISO 129-1: dimension a feature once).",
+  "tools": [
+   "catia_drawing_generate_dimensions",
+   "catia_drawing_add_dimension"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L130",
+  "title": "A new drawing sheet has no readable format until PaperSize is set",
+  "area": "drawing",
+  "severity": "medium",
+  "symptom": "Sheet.PaperSize, Orientation, PaperName, GetPaperWidth raise a generic error on a fresh drawing.",
+  "error_patterns": [
+   "CATIADrawingSheet.*(PaperSize|Orientation|PaperName|GetPaper)"
+  ],
+  "cause": "The default sheet carries no paper format until one is assigned.",
+  "rule": "Set PaperSize (CatPaperSize: A0=2, A1=3, A2=4, A3=5, A4=6) then Orientation (0 portrait, 1 landscape), then read the size back with GetPaperWidth/GetPaperHeight and compare it with ISO 5457.",
+  "tools": [
+   "catia_drawing_create"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L131",
+  "title": "DrawingView.Size returns zeros from Python: read it through a VBScript",
+  "area": "drawing",
+  "severity": "medium",
+  "symptom": "view.Size(...) raises 'Objects for SAFEARRAYS must be sequences' or gives zeros.",
+  "error_patterns": [
+   "Objects for SAFEARRAYS must be sequences"
+  ],
+  "cause": "Size fills a ByRef array, which late binding does not write back (same family as GetCOG).",
+  "rule": "Run a VBScript in CATIA: app.SystemService.Evaluate(code, 0, 'CATMain', [view]) with Dim a(3): v.Size a and return Array(a(0), a(1), a(2), a(3)) = (xmin, xmax, ymin, ymax) on the sheet.",
+  "tools": [
+   "catia_drawing_add_view"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L132",
+  "title": "catia_mcp.drawing.extract misses large circles exported as hundreds of chords",
+  "area": "drawing",
+  "severity": "high",
+  "symptom": "A drawing exported by CATIA shows circles of radius 5 mm and more missing from extract() while 3 mm ones are found.",
+  "error_patterns": [],
+  "cause": "CATIA writes a circle as a polyline of short chords; the PDF coordinate jitter flips the sign of the tiny turning angles and the smoothness test rejects the chain.",
+  "rule": "Use catia_mcp.drawing.verify.find_circles / polyline_circles, which accept a chain by its total turning and fit residual. Compare diameters within 0.02 mm and centres within 0.05 mm.",
+  "tools": [
+   "catia_drawing_check"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L133",
+  "title": "CATIA drawing PDFs draw text as strokes: glyphs look like 1.3 mm circles",
+  "area": "drawing",
+  "severity": "low",
+  "symptom": "A circle extraction of a PDF exported by DrawingDocument.ExportData returns small circles at label positions.",
+  "error_patterns": [],
+  "cause": "Letters such as o, 0 and 6 are exported as vector strokes, not as text.",
+  "rule": "Ignore circles below 2 mm in diameter when checking a drawing, and never read the scale or dimension values from the PDF text: pass the scale explicitly and read dimension values from CATIA (GetValue).",
+  "tools": [
+   "catia_drawing_check",
+   "catia_drawing_export_pdf"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L134",
+  "title": "Another client can close the drawing between two calls: re-find it by name and say so",
+  "area": "drawing",
+  "severity": "medium",
+  "symptom": "Sheets.ActiveSheet or ExportData fail with E_UNEXPECTED (-2147418113) on a drawing that was open a second ago.",
+  "error_patterns": [
+   "-2147418113",
+   "CATIADrawingSheets.*ActiveSheet"
+  ],
+  "cause": "Documents are shared by every client of the CATIA session; catia_close_all from another agent closes them all.",
+  "rule": "Do not rely on ActiveDocument: look the drawing up by name at each call, and when it is gone report that it was closed and rebuild it. Serialise scripts with the cross-process lock (--lock).",
+  "tools": [
+   "catia_drawing_info"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L135",
+  "title": "A dimension prefix replaces CATIA's diameter symbol unless the default prefix is kept",
+  "area": "drawing",
+  "severity": "low",
+  "symptom": "SetPSText(1, '4x ', '') turns 'diameter 8' into '4x 8'.",
+  "error_patterns": [],
+  "cause": "The default main prefix is the placeholder <DIAMETER> (<RADIUS> for radii); overwriting it drops the symbol.",
+  "rule": "Read GetPSText(1, '', '') and write your prefix followed by the default one: '4x <DIAMETER>'.",
+  "tools": [
+   "catia_drawing_add_dimension"
+  ],
+  "proof": "Verified live on CATIA V5 R19 (French UI) while building the drafting tools.",
+  "source": "builtin"
+ },
+ {
+  "id": "L136",
+  "title": "Read sketch geometry inside CATIA: circle centres need GetCenter",
+  "area": "com",
+  "severity": "high",
+  "symptom": "Line2D.GetEndPoints / Point2D.GetCoordinates fail from Python, and in VBScript Circle2D.CenterPoint.GetCoordinates silently leaves the centre empty.",
+  "error_patterns": [
+   "GetEndPoints",
+   "GetCoordinates"
+  ],
+  "cause": "Coordinate outputs are ByRef arrays (zeros or errors from pywin32); the CenterPoint object of a Circle2D or Ellipse2D does not fill them.",
+  "rule": "Run one VBScript per sketch (SystemService.Evaluate): Point2D.GetCoordinates, Line2D.StartPoint/EndPoint.GetCoordinates, Circle2D.GetCenter + Radius + GetParamExtents (0..2pi = full circle, otherwise counter-clockwise arc), Ellipse2D.GetCenter/GetMajorAxis. Sketch.GetAbsoluteAxisData gives the frame (origin, H, V) in mm.",
+  "example": "",
+  "tools": [
+   "catia_describe_model"
+  ],
+  "proof": "Live R19: a sketch with a line, a closed circle, an arc (0.5..2.0 rad) and an ellipse read back exactly through one VBScript; CenterPoint.GetCoordinates returned nothing, GetCenter returned (30, 30).",
+  "source": "builtin"
+ },
+ {
+  "id": "L137",
+  "title": "No sketch degrees-of-freedom analysis in Automation: read constraint statuses",
+  "area": "sketch",
+  "severity": "medium",
+  "symptom": "An audit wants to flag under- and over-constrained sketches but the Sketch object has no analysis member.",
+  "error_patterns": [],
+  "cause": "The Sketch interface exposes only GeometricElements, Constraints, Factory2D, CenterLine, AbsoluteAxis and edition calls. Contradictory constraints are visible only through Constraint.Status; Constraints.UnUpdatedConstraintsCount also returned 2 on saved sketches that had no constraint, so it is not reliable.",
+  "rule": "Report 'no constraint at all' (Constraints.Count = 0) and constraints whose Status is not 0 (1 = not satisfied); never claim a sketch is iso-constrained. Constraint.GetConstraintElement(n).DisplayName gives the constrained element names; add constraints only while the sketch is open (OpenEdition).",
+  "example": "",
+  "tools": [
+   "catia_audit_model"
+  ],
+  "proof": "Live R19: member list of Sketch dumped from its type info; two Length constraints of 20 and 30 mm on one line gave Status 1 on both, BrokenConstraintsCount 0 and a failing Part.Update; a horizontality constraint on a line was stored as a Parallelism (type 8) with the reference 'Axe horizontal'.",
+  "source": "builtin"
+ },
+ {
+  "id": "L138",
+  "title": "Get the interface name of a COM object from its type info",
+  "area": "com",
+  "severity": "medium",
+  "symptom": "Shape.Type is missing and the feature kind (Pad, Hole, fillet...) cannot be told from the name, which the user may have changed.",
+  "error_patterns": [],
+  "cause": "Late binding hides the class; the tree names are user text in any UI language.",
+  "rule": "Use obj._oleobj_.GetTypeInfo().GetDocumentation(-1)[0]: it returns the type library name ('Pad', 'Pocket', 'Shaft', 'Hole', 'ConstRadEdgeFillet', 'Chamfer', 'Assemble', 'Remove', 'Mirror', 'RectPattern', 'CircPattern', 'Body', 'Sketch', 'Line2D', 'PartDocument').",
+  "example": "",
+  "tools": [
+   "catia_describe_model"
+  ],
+  "proof": "Live R19 (French UI): every feature of parts built by the scripting kit returned its English interface name whatever its user name.",
+  "source": "builtin"
+ },
+ {
+  "id": "L139",
+  "title": "Part.IsUpToDate is False on a freshly opened multi-body part",
+  "area": "part",
+  "severity": "low",
+  "symptom": "After opening a saved part with boolean operations, every feature reports IsUpToDate = False although volume and box are correct.",
+  "error_patterns": [],
+  "cause": "The flag means an update is pending, not that the feature failed; the stored geometry is valid.",
+  "rule": "Do not treat a False flag as an error by itself: combine it with a body that measures no solid, or with a failing catia_update_part, before calling a feature broken. Part.IsInactive(feature) reports deactivated features separately.",
+  "example": "",
+  "tools": [
+   "catia_audit_model",
+   "catia_update_part"
+  ],
+  "proof": "Live R19: a flange made of a pad and three Assemble/Remove operations reported False for all its features right after Documents.Open, with a volume equal to the value measured before saving.",
+  "source": "builtin"
+ },
+ {
+  "id": "L140",
+  "title": "close_all in the scripting kit closes other people's documents",
+  "area": "process",
+  "severity": "high",
+  "symptom": "Documents of another agent vanish from CATIA when a kit script starts; reads of your own document fail at random (Item, Name, Update failed, 'part has no body').",
+  "error_patterns": [
+   "La m.thode Item a .chou.",
+   "La m.thode Name a .chou."
+  ],
+  "cause": "PartScript and AssemblyScript default to close_all=True (catia_close_all closes every open document, unsaved work included) and any process that closes documents while you read invalidates your COM objects.",
+  "rule": "In a shared CATIA session build with close_all=False, close only the documents you opened, verify the part name after every read (the active document can change between two calls) and retry the whole read when a COM call fails.",
+  "example": "",
+  "tools": [
+   "catia_close_all",
+   "catia_describe_model"
+  ],
+  "proof": "Live R19: three documents of another agent were closed by a template run; a later batch of reads needed several retries while other scripts were running in the same CATIA.",
+  "source": "builtin"
+ },
+ {
+  "id": "L141",
+  "title": "Edges of a fillet or chamfer can be read back by position, pattern directions cannot",
+  "area": "part",
+  "severity": "medium",
+  "symptom": "A fillet or chamfer must be replayed but its edges have no stable name; a rectangular pattern read back gives another direction than the one used to create it.",
+  "error_patterns": [],
+  "cause": "ObjectsToFillet / ElementsToChamfer return references that can be measured, whereas RectPattern.GetFirstDirection returns an in-plane vector of the direction plane, not the displacement direction.",
+  "rule": "Measure each selected edge with Measurable.GetPointsOnCurve in VBScript and keep its middle point as the designation (catia_fillet edge_points). Do not replay patterns from GetFirstDirection/GetRotationAxis; keep count and spacing as data only.",
+  "example": "",
+  "tools": [
+   "catia_fillet",
+   "catia_chamfer",
+   "catia_describe_model"
+  ],
+  "proof": "Live R19: fillets and a chamfer read back this way were recreated with a volume identical to the original; a pattern created along X read back the direction (0, 1, 0).",
+  "source": "builtin"
+ },
+ {
+  "id": "L142",
+  "title": "Inertia matrix needs Inertias.Add in VBScript and must be removed after",
+  "area": "measure",
+  "severity": "medium",
+  "symptom": "Inertia moments read from Python are zeros; the mass looks 1000 times too small or large for the material.",
+  "error_patterns": [],
+  "cause": "GetInertiaMatrix/GetPrincipalMoments fill ByRef arrays, and the SPAWorkbench Inertias collection keeps every Inertia you add. Values are in kg.m2 at the part density (1000 kg/m3 when no material is set).",
+  "rule": "In VBScript: Set ine = spa.Inertias.Add(body): read GetInertiaMatrix, GetCOGPosition (metres), GetPrincipalMoments, Mass, then spa.Inertias.Remove spa.Inertias.Count. Compare two parts on moments divided by mass when densities may differ.",
+  "example": "",
+  "tools": [
+   "catia_measure_model",
+   "catia_get_inertia"
+  ],
+  "proof": "Live R19: a bracket of 23616 mm3 gave mass 0.0236 kg at density 1000 and a replay of it reproduced the three principal moments exactly.",
+  "source": "builtin"
+ },
+ {
+  "id": "L143",
+  "title": "Two agents or scripts driving one CATIA freeze it (and can crash the PC)",
+  "area": "process",
+  "severity": "critical",
+  "symptom": "CATIA stops responding (Responding=False), COM calls hang for minutes, the whole machine may crash.",
+  "error_patterns": [],
+  "cause": "CATIA's COM server is single-threaded and heavy calls (designation, update, clash) from two clients interleave; each one also leaves documents and windows the other does not expect.",
+  "rule": "Run ONE CATIA client at a time. Chain agents sequentially, or set CATIA_MCP_LOCK=1 so processes queue on the cross-process lock. Give every run a time limit (runner --hang-seconds, timeout) and prefer killing a frozen CNEXT and relaunching over waiting.",
+  "example": "",
+  "tools": [],
+  "proof": "Live R19: two assembly scenarios in parallel froze CATIA (CNEXT not responding for 30+ min); run one after the other the same scenarios finished in 2-6 minutes.",
+  "source": "builtin"
+ },
+ {
+  "id": "L144",
+  "title": "A modal 'files not found or wrong content' dialog blocks every call",
+  "area": "com",
+  "severity": "high",
+  "symptom": "Calls hang; a CATIA dialog 'Open - The following files were not found or do not contain the right information' with buttons Close / Desktop is on screen. Later a COM error such as 'PartNumber failed' appears on a component.",
+  "error_patterns": [
+   "PartNumber",
+   "n.ont pas .t. trouv"
+  ],
+  "cause": "An assembly points to a file that is missing, renamed or has an over-long path (Windows 260 characters). CATIA asks instead of failing.",
+  "rule": "The popup watchdog now presses Close (never Desktop) on this dialog. Then find the broken link: list the components one by one, compare file names before/after the build, and fix the cause (missing file, rename, path length). Never leave the dialog open.",
+  "example": "",
+  "tools": [
+   "catia_list_components",
+   "catia_add_component"
+  ],
+  "proof": "Live R19: a save that suffixed file names past 260 characters left the dialog open for 20 minutes; after Close and the fix the assembly rebuilt cleanly.",
+  "source": "builtin"
+ },
+ {
+  "id": "L145",
+  "title": "Save As on a multi-instance part must not rename it again",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "After catia_save_all, a part inserted 4 times exists as several files with chained suffixes and the parent assembly cannot find them when reopened.",
+  "error_patterns": [],
+  "cause": "Save As re-points the document: the next instance of the same reference reports the NEW path. Treated as a different document, it was saved again under another name.",
+  "rule": "Track saved documents by identity, and mark the new FullName as handled right after Save As. Only two DIFFERENT documents with the same file name get a part-number suffix. Check with a part inserted several times in the same assembly.",
+  "example": "",
+  "tools": [
+   "catia_save_all"
+  ],
+  "proof": "Live R19: a washer inserted 4 times produced 3 chained suffixes (path over 260 characters, dialog on reopen); with the fix one file per document and the assembly reopens.",
+  "source": "builtin"
+ },
+ {
+  "id": "L146",
+  "title": "Two catalogue parts with the same file name collide in save_all",
+  "area": "assembly",
+  "severity": "medium",
+  "symptom": "Save As fails for the second of two different parts that share a file name, coming from two sub-assemblies.",
+  "error_patterns": [
+   "SaveAs"
+  ],
+  "cause": "Both documents map to the same target file in the destination folder.",
+  "rule": "Give distinct documents distinct files: load one of them from a renamed copy before building, or let catia_save_all suffix the second one with its part number.",
+  "example": "",
+  "tools": [
+   "catia_save_all"
+  ],
+  "proof": "Live R19: the same catalogue file used with two different part numbers in two sub-assemblies made the final save fail until one copy was renamed.",
+  "source": "builtin"
+ },
+ {
+  "id": "L147",
+  "title": "Plane coincidence has an orientation: the default can flip a whole sub-assembly by 180 degrees",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "Constraints are all OK but the component is turned by 180 degrees (mirrored position, hundreds of millimetres away).",
+  "error_patterns": [],
+  "cause": "Coincidence of two planes/axes accepts both normals; the solver keeps the side it finds, not the one you meant.",
+  "rule": "Pass orientation explicitly on plane coincidences (same or opposite) and always verify the final pose against the expected one (pose check). An OK status never proves the intended place.",
+  "example": "",
+  "tools": [
+   "catia_coincidence_constraint"
+  ],
+  "proof": "Live R19: a leg on a fuselage pin came out turned by 180 degrees with all constraints OK; orientation opposite gave the expected pose.",
+  "source": "builtin"
+ },
+ {
+  "id": "L148",
+  "title": "Offset between two planes: the sign is not reliable, read the pose back",
+  "area": "assembly",
+  "severity": "high",
+  "symptom": "A piston ends up 2500 mm from its cylinder although the constraint status is OK.",
+  "error_patterns": [],
+  "cause": "The sign of a plane-to-plane distance depends on the normals; the wrong sign is accepted.",
+  "rule": "After every offset, compare the resulting pose with the expected one; if it is opposite, flip the sign. Prefer contact and coincidence on real faces when possible.",
+  "example": "",
+  "tools": [
+   "catia_offset_constraint"
+  ],
+  "proof": "Live R19: a retract piston displaced by 2520 mm with status OK, detected by the pose check, fixed by the opposite sign.",
+  "source": "builtin"
+ },
+ {
+  "id": "L149",
+  "title": "References to faces created by a Mirror cannot be built from their name",
+  "area": "topology",
+  "severity": "medium",
+  "symptom": "Designating a face by a point succeeds but CreateReferenceFromName fails on faces that come from a mirrored feature.",
+  "error_patterns": [
+   "CreateReferenceFromName"
+  ],
+  "cause": "The selection name of a mirrored face is not resolvable as a stand-alone reference.",
+  "rule": "Constrain on the original (non-mirrored) faces, or place the second copy with planes and distances instead of designating its mirrored holes.",
+  "example": "",
+  "tools": [
+   "catia_coincidence_constraint",
+   "catia_contact_constraint"
+  ],
+  "proof": "Live R19: holes on the +Y side resolved, the same holes on the -Y side (Mirror) did not.",
+  "source": "builtin"
+ },
+ {
+  "id": "L150",
+  "title": "Designation of faces on dense parts is slow; cache it on disk and batch it",
+  "area": "performance",
+  "severity": "medium",
+  "symptom": "One dense cylinder costs about 6 s per designated point, and every new process pays it again (a 70-component assembly took 13 minutes).",
+  "error_patterns": [],
+  "cause": "Each designation opens the part and searches its topology; the in-memory cache dies with the process.",
+  "rule": "Use catia_prepare_geometry (one opening per file) and keep the persistent designation cache on (CATIA_MCP_DESIGNATION_CACHE_DISK, default on; keys include file mtime and size, so edited parts are never served stale). Give few points on heavy parts and prefer axes and planar faces to edges.",
+  "example": "",
+  "tools": [
+   "catia_prepare_geometry",
+   "catia_coincidence_constraint"
+  ],
+  "proof": "Live R19: the same 70-component assembly went from 780 s to 164 s once the designations were cached from the previous run.",
+  "source": "builtin"
+ },
+ {
+  "id": "L151",
+  "title": "Timings on the same machine vary up to 3x: compare medians, not single runs",
+  "area": "performance",
+  "severity": "low",
+  "symptom": "A change seems to make a build 3 times slower or faster.",
+  "error_patterns": [],
+  "cause": "Background load, window redraws and CATIA housekeeping add large noise to identical runs.",
+  "rule": "Before blaming or crediting a change, alternate base and new runs several times and compare medians; keep instrumentation (CATIA_MCP_PROFILE) to see where the time goes.",
+  "example": "",
+  "tools": [],
+  "proof": "Live R19: an apparent regression (15 s to 45 s) disappeared when base and new runs were interleaved.",
+  "source": "builtin"
+ },
+ {
+  "id": "L152",
+  "title": "Audit tools that read features can invalidate them (false 'not up to date')",
+  "area": "process",
+  "severity": "low",
+  "symptom": "An audit reports many features as not up to date on files that are fine.",
+  "error_patterns": [],
+  "cause": "Reading some feature properties through COM marks the feature for update.",
+  "rule": "Do not treat 'not up to date' from an inspection tool as an error on its own: re-read the file without the audit and update once before saving.",
+  "example": "",
+  "tools": [
+   "catia_audit_model"
+  ],
+  "proof": "Live R19: 105 'not up to date' findings vanished when the same files were read without the audit.",
   "source": "builtin"
  }
 ]

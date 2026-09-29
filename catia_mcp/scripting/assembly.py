@@ -76,9 +76,23 @@ class AssemblyScript(ScriptBase):
 
     kind = "assembly"
 
-    def __init__(self, name: str, folder: str | Path, strict_paths: bool = False, close_all: bool = True) -> None:
-        super().__init__(check_name(name, "assembly name"), folder)
+    def __init__(self, name: str, folder: str | Path, strict_paths: bool = False, close_all: bool = True,
+                 defer_updates: bool = False, prepare_geometry: bool = True) -> None:
+        """``defer_updates=True`` skips the solve after each constraint and lets ``finish()`` solve and
+        check them all once. Each solve re-computes every constraint, so on a large assembly it is the
+        dominant cost (measured live: 150 constraints 249 s -> 36 s, flat 0.12 s each instead of a cost
+        that grows with the assembly). The price: a wrong constraint is reported at the end, not at
+        the step that made it. Keep it off while debugging a new assembly, on for the final run.
+
+        ``prepare_geometry=True`` (default) collects every face/axis/edge the constraints designate and
+        resolves them in ONE ``catia_prepare_geometry`` step placed before the first constraint: each
+        part is opened once instead of once per constraint (no window flicker, measured 293 s -> 47 s on a
+        58-constraint wheel). A wrong point is then reported before any constraint exists."""
+        super().__init__(check_name(name, "assembly name", deliverable=True), folder)
         self.strict_paths = strict_paths
+        self.defer_updates = defer_updates
+        self.prepare_geometry = prepare_geometry
+        self._prep_step: int | None = None
         self._instances: dict[str, dict[str, Any]] = {}
         self._counters: dict[tuple[str, str], int] = {}
         self._poses: dict[str, Pose] = {}
@@ -187,13 +201,29 @@ class AssemblyScript(ScriptBase):
         self._cnames.add(name)
         return name
 
+    def _designate(self, instance: str, element: dict[str, Any]) -> None:
+        """Queue one designation in the single prepare step (created at the first one)."""
+        if not self.prepare_geometry or "plane" in element:
+            return
+        if self._prep_step is None:
+            self._prep_step = self._emit("catia_prepare_geometry", {"items": []})
+        items = self._steps[self._prep_step - 1]["args"]["items"]
+        entry = {"component": instance, "element": element}
+        if entry not in items:
+            items.append(entry)
+
+    def _deferred(self, args: dict[str, Any]) -> dict[str, Any]:
+        if self.defer_updates:
+            args["defer_update"] = True
+        return args
+
     def fix(self, instance: str, name: str) -> None:
         """Fix a component in space (the reference part). Do it before constraining the others."""
         self._known(instance, "fix")
         if instance in self._fixed:
             raise ScriptError(f"fix: {instance!r} is already fixed.")
         self._cname(name)
-        self._emit("catia_fix_constraint", {"component": instance, "name": name})
+        self._emit("catia_fix_constraint", self._deferred({"component": instance, "name": name}))
         self._fixed[instance] = self._poses.get(instance, Pose())
         self._constrained.add(instance)
 
@@ -212,9 +242,11 @@ class AssemblyScript(ScriptBase):
                 "Axes go with axes (coaxial), planar faces with planar faces."
             )
         self._cname(name)
+        self._designate(i1, d1)
+        self._designate(i2, d2)
         args = {"component1": i1, "element1": d1, "component2": i2, "element2": d2, "name": name}
         args.update(extra or {})
-        self._emit(f"catia_{tool}_constraint", args)
+        self._emit(f"catia_{tool}_constraint", self._deferred(args))
         self._constrained.update((i1, i2))
 
     _PLANAR = {"face": {"face", "plane"}, "plane": {"face", "plane"}}

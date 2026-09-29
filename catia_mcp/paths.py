@@ -40,6 +40,10 @@ def popup_log() -> Path:
     return home() / "catia_popups.log"
 
 
+def designation_cache_file() -> Path:
+    return home() / "designation_cache.jsonl"
+
+
 def env_flag(name: str, default: bool) -> bool:
     """Boolean environment switch: 1/true/yes/on and 0/false/no/off."""
     raw = os.environ.get(name)

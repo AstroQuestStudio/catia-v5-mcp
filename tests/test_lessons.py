@@ -29,7 +29,7 @@ def isolated_home(tmp_path, monkeypatch):
 # ------------------------------------------------------------------ data
 def test_json_valid_and_size(raw):
     assert isinstance(raw, list)
-    assert 80 <= len(raw) <= 150
+    assert 80 <= len(raw) <= 250
 
 
 def test_schema(raw):
@@ -230,3 +230,13 @@ def test_load_with_explicit_path(tmp_path):
     p.write_text(json.dumps({"title": "Custom", "rule": "R."}) + "\n", encoding="utf-8")
     loaded = lessons.load(p)
     assert loaded[-1]["title"] == "Custom" and loaded[-1]["id"].startswith("U")
+
+
+def test_tool_specific_lessons_do_not_leak_to_other_tools():
+    err = "La méthode UpdateObject a échoué"
+    for_pad = lessons.hint_for_error(err, tool="catia_pad", limit=5)
+    assert "L002" in for_pad
+    assert "L038" not in for_pad  # the shaft/groove axis rule is not about a pad
+    assert "L038" in lessons.hint_for_error(err, tool="catia_shaft", limit=5)
+    # without a tool, every matching lesson can be shown
+    assert "L038" in lessons.hint_for_error(err, limit=10)

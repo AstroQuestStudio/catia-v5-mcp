@@ -121,3 +121,34 @@ def test_step_limit():
 @pytest.mark.parametrize("text", ["Error in x: y", "Unknown tool: 'z'", "error: no doc"])
 def test_failure_markers(text):
     assert batch._looks_failed(text)
+
+
+def test_with_prepared_geometry_inserts_one_deduplicated_step_after_the_last_add():
+    steps = [
+        ["catia_add_component", {"file_path": "a"}],
+        ["catia_add_component", {"file_path": "b"}],
+        ["catia_move_component", {"component": "A.1", "tx": 1}],
+        ["catia_contact_constraint", {"component1": "A.1", "element1": {"face_point": [1, 2, 3]},
+                                       "component2": "B.1", "element2": {"plane": "xy"}}],
+        ["catia_coincidence_constraint", {"component1": "A.1", "element1": {"face_point": [1, 2, 3]},
+                                           "component2": "B.1", "element2": {"axis_point": [0, 0, 5]}}],
+    ]
+    out = batch.with_prepared_geometry(steps)
+    assert len(out) == len(steps) + 1 and out[2]["tool"] == "catia_prepare_geometry"
+    items = out[2]["args"]["items"]
+    assert items == [
+        {"component": "A.1", "element": {"face_point": [1, 2, 3]}},   # listed once although used twice
+        {"component": "B.1", "element": {"axis_point": [0, 0, 5]}},   # planes need no search
+    ]
+    assert steps[0][0] == "catia_add_component" and len(steps) == 5   # input not mutated
+
+
+def test_with_prepared_geometry_leaves_other_scenarios_alone():
+    plain = [["catia_new_part", {}], ["catia_create_sketch", {"plane": "xy"}]]
+    assert batch.with_prepared_geometry(plain) is plain
+    already = [["catia_add_component", {"file_path": "a"}], ["catia_prepare_geometry", {"items": []}]]
+    assert batch.with_prepared_geometry(already) is already
+    assert batch.with_prepared_geometry("not json") == "not json"
+    no_add = [["catia_contact_constraint", {"component1": "A.1", "element1": {"face_point": [1, 1, 1]},
+                                            "component2": "B.1", "element2": {"face_point": [1, 1, 1]}}]]
+    assert batch.with_prepared_geometry(no_add) is no_add

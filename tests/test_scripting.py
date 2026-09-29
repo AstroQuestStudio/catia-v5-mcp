@@ -823,3 +823,36 @@ def test_inspect_steps_valid_and_refuses_non_parts(tmp_path, schemas):
         inspect_steps([tmp_path / "A.CATProduct"])
     with pytest.raises(ScriptError):
         inspect_steps([])
+
+
+def test_mechanical_nouns_are_valid_part_names_but_feature_words_and_placeholders_are_not():
+    from catia_mcp.scripting import AssemblyScript, PartScript, ScriptError
+
+    PartScript("Shaft", "out/Shaft")
+    PartScript("Housing", "out/Housing")
+    AssemblyScript("Gearbox", "out/Gearbox")
+    for bad in ("Part", "Product1", "Test", "Pad.1", "pad", "Pocket", ""):
+        with pytest.raises(ScriptError):
+            PartScript(bad, "out/x")
+    # a FEATURE named like its bare type is still refused
+    p = PartScript("Shaft", "out/Shaft")
+    with pytest.raises(ScriptError, match="role"):
+        p.sketch("xy", "Sketch")
+
+
+def test_defer_updates_marks_every_constraint_and_the_solve_stays_at_the_end(tmp_path, schemas):
+    from catia_mcp import batch
+
+    (tmp_path / "A.CATPart").write_text("x")
+    (tmp_path / "B.CATPart").write_text("x")
+    for defer in (False, True):
+        a = AssemblyScript("Pair_Test", tmp_path / f"o{defer}", defer_updates=defer)
+        x, y = a.add(tmp_path / "A.CATPart"), a.add(tmp_path / "B.CATPart")
+        a.fix(x, "Fix_A")
+        a.contact(y, face(0, 0, 5), x, face(20, 0, 5), "Contact_B_A")
+        a.finish(views=("isometric",), clash=False)
+        constraints = [s for s in a.steps() if s["tool"].endswith("_constraint")]
+        assert constraints and all(bool(s["args"].get("defer_update")) is defer for s in constraints)
+        assert any(s["tool"] == "catia_update_assembly" for s in a.steps())  # the single solve
+        steps, problems = batch.normalize_steps(a.steps())
+        assert not problems and not batch.validate_batch(steps, schemas)

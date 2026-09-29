@@ -3,22 +3,22 @@
 Ordered by value to an agent working unattended. "Live" means it needs a licensed CATIA to be
 proven; nothing ships as a registered tool before that.
 
-## Next (0.4)
+## Done in 0.4
 
-1. **Drafting: model to 2D drawing.** Create a `CATDrawing`, add views (front, projections, section,
-   detail), generate and place dimensions, title block, export PDF. Closed-loop check: read the exported PDF
-   back with `drawing_extract_geometry` and compare diameters, hole spacing and overall size with the 3D
-   bounding box. Conformance rules (sheet size, preferred scales, title block, line weights, dimensioning, general
-   tolerances) will live in a `standards` module and a written design.
-2. **Reverse engineering: `catia_describe_model`.** Walk a part (bodies, features, sketches with geometry and
-   constraints, parameters, volume, box) and emit a JSON spec plus a replayable `PartScript`. Anything not
-   recognised is reported as an explicit black box, never invented.
-3. **`catia_audit_model`.** Tree quality: default names, bodies without a result, empty features, over- or
-   under-constrained sketches, feature order.
-4. **Scale.** `limit` / `offset` on `catia_list_faces` and `catia_list_components`, per-sub-product queries,
-   manual update mode with one update per sub-product, checkpointed batches that resume after an interruption.
-5. **Undo and transactions.** Roll back the last step of a batch when it fails halfway.
-6. **Sketch constraint diagnostics.** Detect over- and under-constrained sketches before extruding.
+Drafting (model to 2D drawing with a closed-loop check against the model), reverse engineering
+(`catia_describe_model`, replay, `catia_measure_model`), `catia_audit_model`, paging and persistent caching for
+scale, safety tiers. See the changelog.
+
+## Next (0.5)
+
+1. **Sketch constraints as data.** Address sketch elements by stable ids instead of indexes so that
+   constraints can be replayed by the reverse-engineering script and diagnosed (over- and under-constrained).
+2. **Assembly editing.** Delete or disable a constraint, absolute component placement, hide or show a
+   component, keep the camera between calls. Missing today; an animation had to be built around them.
+3. **Undo and transactions.** Roll back the last step of a batch when it fails halfway.
+4. **Checkpointed batches.** Resume a long scenario after an interruption (runner `--start-at`).
+5. **Materials and mass properties**: apply a material, report mass and inertia with real density.
+6. **Audit without side effects**: reading features must not mark them for update.
 
 ## Then
 

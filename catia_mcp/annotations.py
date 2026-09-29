@@ -20,6 +20,10 @@ _READ_ONLY = {
     "catia_clash_analysis",   # computes and removes its own temporary clash object
     "catia_screenshot",       # writes an image file, never changes the model
     "catia_audit",
+    "catia_audit_model",      # reads the model and reports; the fixes it proposes are separate calls
+    "catia_describe_model",
+    "catia_drawing_info",
+    "catia_drawing_check",
 }
 _DESTRUCTIVE = {
     "catia_delete_feature",

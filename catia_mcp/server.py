@@ -14,9 +14,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import difflib
+import importlib
 import logging
 import os
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 from typing import Any
 
@@ -26,7 +28,17 @@ from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool, ToolAnnotations
 
-from catia_mcp import annotations, autotrace, batch, guard, naming, paths, profiles, resources
+from catia_mcp import (
+    annotations,
+    autotrace,
+    batch,
+    guard,
+    naming,
+    paths,
+    profiles,
+    resources,
+    safety,
+)
 from catia_mcp.connection import CATIAConnection
 from catia_mcp.tools.assembly import AssemblyTools
 from catia_mcp.tools.bodies import BodyTools
@@ -73,6 +85,7 @@ def build_instructions() -> str:
 # Tools that never need a live CATIA (server-level knowledge tools, drawing analysis).
 _OFFLINE_TOOLS = {
     "catia_connect", "catia_disconnect", "catia_lessons", "catia_add_lesson",
+    "catia_get_safety_state", "catia_set_safety",
     "catia_batch",  # only orchestrates: each inner step connects on its own when it needs CATIA
     "drawing_extract_geometry", "drawing_render", "drawing_overlay",
 }
@@ -113,29 +126,27 @@ class CATIAMCPServer:
         self.drawing_tools = DrawingTools(self.connection)
         self.meta_tools = MetaTools(self)
 
-        # All tool modules
-        self._tool_modules = [
-            self.document_tools,
-            self.sketcher_tools,
-            self.part_design_tools,
-            self.body_tools,
-            self.boolean_tools,
-            self.gsd_tools,
-            self.assembly_tools,
-            self.measurement_tools,
-            self.export_tools,
-            self.drawing_tools,
-            self.meta_tools,
+        # (module, tool set group) for every tool module; meta stays last.
+        registry = [
+            (self.document_tools, "document"),
+            (self.sketcher_tools, "sketch"),
+            (self.part_design_tools, "part"),
+            (self.body_tools, "body"),
+            (self.boolean_tools, "boolean"),
+            (self.gsd_tools, "gsd"),
+            (self.assembly_tools, "assembly"),
+            (self.measurement_tools, "measure"),
+            (self.export_tools, "export"),
+            (self.drawing_tools, "drawing"),
         ]
+        registry += self._load_optional_modules()
+        registry.append((self.meta_tools, "meta"))
+        self._tool_modules = [m for m, _ in registry]
 
         # Build tool name -> module routing table
         self._tool_router: dict[str, Any] = {}
         self._tool_group: dict[str, str] = {}
-        module_groups = [
-            "document", "sketch", "part", "body", "boolean", "gsd",
-            "assembly", "measure", "export", "drawing", "meta",
-        ]
-        for module, group in zip(self._tool_modules, module_groups, strict=True):
+        for module, group in registry:
             for tool_def in module.get_tool_definitions():
                 self._tool_router[tool_def["name"]] = module
                 self._tool_group[tool_def["name"]] = group
@@ -143,7 +154,31 @@ class CATIAMCPServer:
         # Which groups are advertised in tools/list (hidden tools still work when called).
         self.enabled_groups = profiles.parse(os.environ.get("CATIA_MCP_TOOLSETS"))
 
+        # How much this session may change (read < write < dangerous). It can only be lowered at
+        # runtime; raising it needs a human to restart the server with another value.
+        self.safety = safety.Gate(safety.parse(os.environ.get("CATIA_MCP_SAFETY")))
+
         self._setup_handlers()
+
+    # Modules that are registered when their file exists and imports cleanly: a half-written or
+    # broken optional module is logged and skipped, it never takes the whole server down.
+    _OPTIONAL_MODULES = (
+        ("catia_mcp.tools.drafting", "DraftingTools", "drafting"),
+        ("catia_mcp.tools.reverse", "ReverseTools", "reverse"),
+    )
+
+    def _load_optional_modules(self) -> list[tuple[Any, str]]:
+        found: list[tuple[Any, str]] = []
+        for module_name, class_name, group in self._OPTIONAL_MODULES:
+            try:
+                module = importlib.import_module(module_name)
+                found.append((getattr(module, class_name)(self.connection), group))
+            except ModuleNotFoundError as e:
+                if e.name != module_name:
+                    logger.warning("optional module %s failed: %s", module_name, e)
+            except Exception as e:
+                logger.warning("optional module %s skipped: %s", module_name, e)
+        return found
 
     def advertised_tool_definitions(self) -> list[dict[str, Any]]:
         """Tool schemas shown to the client, after the CATIA_MCP_TOOLSETS filter."""
@@ -261,6 +296,9 @@ class CATIAMCPServer:
             hint = f" Did you mean: {', '.join(close)}?" if close else ""
             raise CatiaToolError(f"Unknown tool: '{name}'.{hint}")
 
+        if not self.safety.allows(name):
+            raise CatiaToolError(self.safety.blocked_message(name))
+
         if name not in _OFFLINE_TOOLS and not self.connection.is_connected:
             logger.info("Auto-connected: %s", self.connection.connect())
             self._start_guards()
@@ -269,7 +307,10 @@ class CATIAMCPServer:
             self.tool_definitions()
         server_named = name in self._server_named_tools
         new_name = arguments.get("name") if server_named else None
+        phases: dict[str, float] = {}
+        t0 = time.perf_counter()
         before = naming.snapshot(self.connection) if server_named else None
+        phases["snapshot_before"] = time.perf_counter() - t0
         tool_args = {k: v for k, v in arguments.items() if not (server_named and k == "name")}
 
         note = ""
@@ -277,7 +318,9 @@ class CATIAMCPServer:
         # did what the drawing asks (a pattern that copied a 1.7 mm cut instead of
         # 8 through-holes was caught this way). Tools that already report it skip this.
         measure = name in self._VOLUME_TOOLS
+        t0 = time.perf_counter()
         body_before = self._measure_body(name, arguments) if measure else None
+        phases["measure_before"] = time.perf_counter() - t0
         # View tools must see a live display (a screenshot taken while redraws
         # are frozen would show a stale image).
         live_view = name in (
@@ -288,18 +331,33 @@ class CATIAMCPServer:
             try:
                 kill = paths.env_flag("CATIA_MCP_HANG_KILL", False)
                 with guard.HangGuard(guard.hang_seconds(), name, kill=kill):
+                    t0 = time.perf_counter()
                     result = module.execute(name, tool_args)
+                    phases["execute"] = time.perf_counter() - t0
             except Exception as e:
-                raise CatiaToolError(with_hint(f"{type(e).__name__}: {e}", name)) from e
+                message = f"{type(e).__name__}: {e}"
+                if server_named and paths.env_flag("CATIA_MCP_CLEANUP_ON_FAILURE", True):
+                    # A failed call must not leave a broken feature in the tree.
+                    try:
+                        cleanup = naming.rollback(self.connection, before)
+                    except Exception as ce:
+                        cleanup = f"[cleanup] failed: {ce}"
+                    if cleanup:
+                        message += "\n" + cleanup
+                raise CatiaToolError(with_hint(message, name)) from e
             if measure and body_before and "volume change" not in result:
+                t0 = time.perf_counter()
                 after = self._measure_body(name, arguments)
+                phases["measure_after"] = time.perf_counter() - t0
                 if after:
                     result += f"\n[check] volume change {after[1] - body_before[1]:+.2f} mm³ in '{after[0]}'."
             if server_named:
+                t0 = time.perf_counter()
                 try:
                     note = naming.after_creation(self.connection, before, new_name)
                 except Exception as e:
                     note = f"[naming] post-processing failed: {e}"
+                phases["naming_after"] = time.perf_counter() - t0
         logger.info("Tool result: %s", result[:200] if len(result) > 200 else result)
 
         if server_named:
@@ -314,6 +372,14 @@ class CATIAMCPServer:
 
         if batch._looks_failed(result):
             result = with_hint(result, name)
+
+        if paths.env_flag("CATIA_MCP_PROFILE", False):
+            # Where does the time of one call go? Set CATIA_MCP_PROFILE=1 to see it per call.
+            parts = " ".join(f"{k}={v:.2f}s" for k, v in phases.items() if v >= 0.005)
+            overhead = sum(v for k, v in phases.items() if k != "execute")
+            line = f"[perf] {name}: total={sum(phases.values()):.2f}s overhead={overhead:.2f}s ({parts})"
+            logger.info(line)
+            result = f"{result}\n{line}"
 
         if trace and paths.env_flag("CATIA_MCP_AUTOTRACE", False):
             # Optional project journal (screenshot + CSV line after each feature tool).

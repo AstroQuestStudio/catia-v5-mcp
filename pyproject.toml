@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "catia-v5-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "MCP server that lets AI agents drive CATIA V5 (R19+) through COM: batch execution, self-checking modelling tools, and a learning knowledge base of proven pitfalls"
 readme = "README.md"
 license = "MIT"

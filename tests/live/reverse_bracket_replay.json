@@ -1,0 +1,200 @@
+[
+ [
+  "catia_new_part",
+  {
+   "name": "Bracket_L_Replay"
+  }
+ ],
+ [
+  "catia_rename_body",
+  {
+   "new_name": "Bracket_L_Resultat"
+  }
+ ],
+ [
+  "catia_create_sketch",
+  {
+   "name": "Sk_L_Profile",
+   "plane": "xy"
+  }
+ ],
+ [
+  "catia_sketch_profile",
+  {
+   "start": [
+    0.0,
+    0.0
+   ],
+   "segments": [
+    {
+     "type": "line",
+     "to": [
+      60.0,
+      0.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      60.0,
+      8.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      8.0,
+      8.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      8.0,
+      50.0
+     ]
+    },
+    {
+     "type": "line",
+     "to": [
+      0.0,
+      50.0
+     ]
+    },
+    {
+     "type": "line"
+    }
+   ],
+   "closed": true
+  }
+ ],
+ [
+  "catia_close_sketch",
+  {}
+ ],
+ [
+  "catia_pad",
+  {
+   "height": 30.0,
+   "sketch_name": "Sk_L_Profile",
+   "name": "Body_L_W30"
+  }
+ ],
+ [
+  "catia_hole",
+  {
+   "point": [
+    40.0,
+    0.0,
+    15.0
+   ],
+   "diameter": 9.0,
+   "depth": 8.0,
+   "name": "Hole_Base_D9"
+  }
+ ],
+ [
+  "catia_hole",
+  {
+   "point": [
+    0.0,
+    35.0,
+    15.0
+   ],
+   "diameter": 6.0,
+   "depth": 8.0,
+   "name": "Hole_Wall_D6"
+  }
+ ],
+ [
+  "catia_fillet",
+  {
+   "radius": 4.0,
+   "edge_points": [
+    [
+     8.0,
+     8.0,
+     15.0
+    ]
+   ],
+   "name": "Round_Inner_R4"
+  }
+ ],
+ [
+  "catia_fillet",
+  {
+   "radius": 6.0,
+   "edge_points": [
+    [
+     0.0,
+     0.0,
+     15.0
+    ]
+   ],
+   "name": "Round_Outer_R6"
+  }
+ ],
+ [
+  "catia_activate_body",
+  {
+   "body_name": "Bracket_L_Resultat"
+  }
+ ],
+ [
+  "catia_update_part",
+  {}
+ ],
+ [
+  "catia_get_inertia",
+  {
+   "body_name": "Bracket_L_Resultat",
+   "density": 1000.0
+  }
+ ],
+ [
+  "catia_get_bounding_box",
+  {}
+ ],
+ [
+  "catia_get_tree",
+  {}
+ ],
+ [
+  "catia_save_document",
+  {
+   "file_path": "replay_out/Bracket_L_Replay.CATPart"
+  }
+ ],
+ [
+  "catia_set_view",
+  {
+   "view": "isometric"
+  }
+ ],
+ [
+  "catia_fit_all",
+  {}
+ ],
+ [
+  "catia_screenshot",
+  {
+   "file_path": "replay_out/screens/01_isometric.png"
+  }
+ ],
+ [
+  "catia_set_view",
+  {
+   "view": "isometric_back"
+  }
+ ],
+ [
+  "catia_fit_all",
+  {}
+ ],
+ [
+  "catia_screenshot",
+  {
+   "file_path": "replay_out/screens/02_isometric_back.png"
+  }
+ ]
+]

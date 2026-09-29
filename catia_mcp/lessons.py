@@ -174,6 +174,10 @@ def hint_for_error(text: str, tool: str | None = None, limit: int = 2) -> str:
         return ""
     hits = []
     for lesson in load():
+        # A lesson that names tools only applies to them: the axis rule of catia_shaft must not
+        # be shown when catia_pad fails on the same generic COM error.
+        if tool and lesson["tools"] and tool not in lesson["tools"]:
+            continue
         length = _match_length(lesson, text)
         if length:
             hits.append((lesson, length))
